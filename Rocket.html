@@ -373,7 +373,7 @@
         // ============================================================================
         const GUIDANCE_CONFIG = {
             // Target orbit
-            targetAltitude: 300000,          // meters — target circular orbit
+            targetAltitude: 600000,          // meters — target circular orbit
             
             // Atmosphere threshold
             atmosphereLimit: 70000,          // meters — above this, we're in "vacuum"
@@ -400,6 +400,9 @@
             lastCommandedPitch: 90,
             throttle: 1.0,
             lastFlightPathAngle: 90,
+            isRetrograde: false, // Added for retrograde burn logic
+            circularizationBurnStarted: false, // Track if we've logged circularization burn start
+            retrogradeBurnStarted: false, // Track if we've logged retrograde burn start
         };
         
         function resetGuidance() {
@@ -408,6 +411,9 @@
                 lastCommandedPitch: 90,
                 throttle: 1.0,
                 lastFlightPathAngle: 90,
+                isRetrograde: false,
+                circularizationBurnStarted: false,
+                retrogradeBurnStarted: false,
             };
         }
         
@@ -890,6 +896,7 @@
                 
                 // PHASE 1: Apoapsis below target — raise it
                 if (apoError < -tolerance) {
+                    guidanceState.isRetrograde = false;
                     // ============================================================
                     // RAISING APOAPSIS
                     // ============================================================
@@ -913,6 +920,7 @@
                 }
                 // PHASE 2: Apoapsis at or above target, periapsis below — circularize
                 else if (periError < -tolerance) {
+                    guidanceState.isRetrograde = false;
                     // ============================================================
                     // CIRCULARIZATION — Symmetric burn around apoapsis
                     // ============================================================
@@ -956,18 +964,114 @@
                         }
                     }
                 }
-                // PHASE 3: Both apoapsis and periapsis within tolerance
+                // PHASE 3: Apoapsis too high, periapsis at target — retrograde at periapsis
+                else if (periError >= -tolerance && apoError > tolerance) {
+                    // ============================================================
+                    // EDGE CASE: Apoapsis too high after circularization
+                    // Retrograde burn at periapsis to lower apoapsis
+                    // ============================================================
+                    
+                    // Calculate time to periapsis
+                    const altitudeToPeriapsis = altitude - orbit.periapsis;
+                    let timeToPeriapsis = 0;
+                    
+                    if (!isAscending && altitudeToPeriapsis > 0) {
+                        // We're descending toward periapsis
+                        // Only calculate time when we're actually approaching periapsis
+                        timeToPeriapsis = altitudeToPeriapsis / Math.max(1, -vVertical);
+                    } else if (isAscending) {
+                        // We're ascending away from periapsis - we just passed it
+                        // Don't start burn yet, wait until we're descending toward it
+                        timeToPeriapsis = Infinity; // Don't start burn while ascending
+                    }
+                    
+                    // Calculate delta-v needed for retrograde burn at periapsis
+                    // To lower apoapsis to target, we need to reduce velocity at periapsis
+                    // Target: circular orbit at target altitude
+                    const r_peri = EARTH_RADIUS + orbit.periapsis;  // Radius at periapsis
+                    const r_target = EARTH_RADIUS + GUIDANCE_CONFIG.targetAltitude;
+                    
+                    // Desired circular velocity at target altitude
+                    const v_circ_target = Math.sqrt(mu / r_target);
+                    
+                    // Current velocity at periapsis (vis-viva)
+                    const v_at_peri = orbit.semiMajorAxis > 0
+                        ? Math.sqrt(mu * (2 / r_peri - 1 / orbit.semiMajorAxis))
+                        : velocity;
+                    
+                    // Calculate what velocity we'd need at periapsis to get target apoapsis
+                    // For elliptical orbit: v_peri^2 = μ(2/r_peri - 1/a)
+                    // Solving for new semi-major axis: a_new = μ / (2μ/r_peri - v_new^2)
+                    // With target apoapsis: a_new = (r_peri + r_apo_target) / 2
+                    const a_target = (r_peri + r_target) / 2;
+                    const v_peri_target = Math.sqrt(mu * (2 / r_peri - 1 / a_target));
+                    
+                    // Delta-v needed (retrograde, so negative)
+                    const retrogradeDeltaV = Math.max(0, v_at_peri - v_peri_target);
+                    
+                    // Calculate burn time for retrograde burn
+                    let retrogradeBurnTime = 0;
+                    if (state.currentStage < ROCKET_CONFIG.stages.length && retrogradeDeltaV > 0) {
+                        const stage = ROCKET_CONFIG.stages[state.currentStage];
+                        const currentMass = getTotalMass();
+                        const thrust = stage.thrustVac;
+                        
+                        if (thrust > 0) {
+                            retrogradeBurnTime = retrogradeDeltaV * currentMass / thrust;
+                        }
+                    }
+                    
+                    // When to start the burn: half the burn time before periapsis
+                    // This creates a symmetric burn centered on periapsis (just like apoapsis)
+                    const burnStartTimeBeforePeri = retrogradeBurnTime / 2;
+                    const shouldStartRetrograde = !isAscending &&  // Only when descending toward periapsis
+                                                  timeToPeriapsis <= burnStartTimeBeforePeri && 
+                                                  timeToPeriapsis < Infinity && // Don't start while ascending
+                                                  retrogradeBurnTime > 0;
+                    
+                    debugInfo.timeToPeriapsis = timeToPeriapsis;
+                    debugInfo.retroDeltaV = retrogradeDeltaV;
+                    debugInfo.retroBurnTime = retrogradeBurnTime;
+                    debugInfo.retroBurnStartTime = burnStartTimeBeforePeri;
+                    
+                    if (shouldStartRetrograde) {
+                        // Retrograde burn! Point opposite to velocity (retrograde)
+                        // Set flag to indicate retrograde burn - will be handled in thrust direction calculation
+                        guidanceState.isRetrograde = true;
+                        correction = 0; // We'll handle retrograde direction in thrust vector calculation
+                        
+                        // Proportional throttle
+                        const apoExcess = apoError;
+                        if (apoExcess < 50000) {
+                            commandedThrottle = Math.max(0.1, apoExcess / 50000);
+                            debugInfo.reason = 'Retrograde at periapsis — throttling down (' + (apoExcess/1000).toFixed(0) + 'km Ap excess)';
+                        } else {
+                            commandedThrottle = 1.0;
+                            debugInfo.reason = 'Starting retrograde burn (T-' + timeToPeriapsis.toFixed(0) + 's to peri)';
+                        }
+                    }
+                    else {
+                        // Coast to periapsis
+                        guidanceState.isRetrograde = false;
+                        commandedThrottle = 0;
+                        correction = 0;
+                        debugInfo.reason = 'Coasting to retrograde burn (T-' + timeToPeriapsis.toFixed(0) + 's, burn at T-' + burnStartTimeBeforePeri.toFixed(0) + 's)';
+                    }
+                }
+                // PHASE 4: Both apoapsis and periapsis within tolerance
                 else {
                     // ============================================================
                     // ORBIT ACHIEVED
                     // ============================================================
+                    guidanceState.isRetrograde = false;
                     commandedThrottle = 0;
                     correction = 0;
                     debugInfo.reason = 'Orbit achieved — coasting';
                 }
                 
-                debugInfo.apoapsisError = apoapsisError;
-                debugInfo.periapsisError = periapsisError;
+                // Store error values in debug info
+                debugInfo.apoError = apoError;
+                debugInfo.periError = periError;
                 
                 commandedPitch = basePitch + correction;
                 debugInfo.correction = correction;
@@ -1027,11 +1131,27 @@
             // STEP 6: CONVERT TO THRUST VECTOR
             // ========================================================================
             
-            const pitchRad = commandedPitch * Math.PI / 180;
-            const thrustDir = {
-                x: Math.cos(pitchRad) * localEast.x + Math.sin(pitchRad) * localUp.x,
-                y: Math.cos(pitchRad) * localEast.y + Math.sin(pitchRad) * localUp.y
-            };
+            let thrustDir;
+            if (guidanceState.isRetrograde) {
+                // Retrograde burn: thrust opposite to velocity vector
+                const velocityMag = Math.sqrt(state.vx * state.vx + state.vy * state.vy);
+                if (velocityMag > 0) {
+                    thrustDir = {
+                        x: -state.vx / velocityMag,
+                        y: -state.vy / velocityMag
+                    };
+                } else {
+                    // Fallback if no velocity
+                    thrustDir = { x: -localEast.x, y: -localEast.y };
+                }
+            } else {
+                // Normal prograde/guided thrust
+                const pitchRad = commandedPitch * Math.PI / 180;
+                thrustDir = {
+                    x: Math.cos(pitchRad) * localEast.x + Math.sin(pitchRad) * localUp.x,
+                    y: Math.cos(pitchRad) * localEast.y + Math.sin(pitchRad) * localUp.y
+                };
+            }
             
             // Normalize
             const mag = Math.sqrt(thrustDir.x * thrustDir.x + thrustDir.y * thrustDir.y);
@@ -1306,6 +1426,32 @@
                 state.guidancePhase = guidance.phase;
                 state.guidancePitch = guidance.pitch;
                 state.guidanceThrottle = guidance.throttle;
+                
+                // Detect and log burn start events
+                // Check if circularization burn just started
+                if (guidance.phase === 'vacuum-guidance' && guidance.debug.reason) {
+                    const reason = guidance.debug.reason;
+                    if ((reason.includes('Starting circularization') || reason.includes('At apoapsis — circularizing')) && 
+                        !guidanceState.circularizationBurnStarted && 
+                        state.engineOn && 
+                        guidance.throttle > 0) {
+                        guidanceState.circularizationBurnStarted = true;
+                        const deltaV = guidance.debug.circDeltaV || 0;
+                        const burnTime = guidance.debug.circBurnTime || 0;
+                        addEvent(`Circularization burn start (Δv: ${(deltaV/1000).toFixed(1)} km/s, ${burnTime.toFixed(1)}s)`);
+                    }
+                    
+                    // Check if retrograde burn just started
+                    if (reason.includes('Starting retrograde burn') && 
+                        !guidanceState.retrogradeBurnStarted && 
+                        state.engineOn && 
+                        guidance.throttle > 0) {
+                        guidanceState.retrogradeBurnStarted = true;
+                        const deltaV = guidance.debug.retroDeltaV || 0;
+                        const burnTime = guidance.debug.retroBurnTime || 0;
+                        addEvent(`Retrograde burn start (Δv: ${(deltaV/1000).toFixed(1)} km/s, ${burnTime.toFixed(1)}s)`);
+                    }
+                }
             }
             
             // Thrust - enable engine if in burn mode, pitch program complete, and have propellant
@@ -1474,6 +1620,127 @@
             updateTelemetry();
         }
         
+        // ============================================================================
+        // HELPER: Calculate upcoming burn events
+        // ============================================================================
+        function calculateBurnEvents() {
+            const altitude = getAltitude();
+            const r = Math.sqrt(state.x * state.x + state.y * state.y);
+            const velocity = Math.sqrt(state.vx * state.vx + state.vy * state.vy);
+            const localUp = { x: state.x / r, y: state.y / r };
+            const localEast = { x: localUp.y, y: -localUp.x };
+            const vVertical = state.vx * localUp.x + state.vy * localUp.y;
+            const vHorizontal = state.vx * localEast.x + state.vy * localEast.y;
+            const isAscending = vVertical > 0;
+            
+            // Only calculate burn events if we're in vacuum (above atmosphere)
+            if (altitude < GUIDANCE_CONFIG.atmosphereLimit) {
+                return [];
+            }
+            
+            const orbit = predictOrbit(state);
+            const mu = G * EARTH_MASS;
+            const tolerance = 10000; // 10km
+            const apoError = orbit.apoapsis - GUIDANCE_CONFIG.targetAltitude;
+            const periError = orbit.periapsis - GUIDANCE_CONFIG.targetAltitude;
+            
+            const events = [];
+            
+            // PHASE 2: Circularization burn at apoapsis
+            if (periError < -tolerance && apoError >= -tolerance) {
+                // Calculate time to apoapsis
+                const altitudeToApoapsis = orbit.apoapsis - altitude;
+                let timeToApoapsis = 0;
+                if (isAscending && altitudeToApoapsis > 0) {
+                    timeToApoapsis = altitudeToApoapsis / Math.max(1, vVertical);
+                }
+                
+                // Calculate circularization delta-v and burn time
+                const r_apo = EARTH_RADIUS + orbit.apoapsis;
+                const v_circular = Math.sqrt(mu / r_apo);
+                const v_at_apo = orbit.semiMajorAxis > 0 
+                    ? Math.sqrt(mu * (2 / r_apo - 1 / orbit.semiMajorAxis))
+                    : velocity;
+                const circularizationDeltaV = Math.max(0, v_circular - v_at_apo);
+                
+                let circularizationBurnTime = 0;
+                if (state.currentStage < ROCKET_CONFIG.stages.length && circularizationDeltaV > 0) {
+                    const stage = ROCKET_CONFIG.stages[state.currentStage];
+                    const currentMass = getTotalMass();
+                    const thrust = stage.thrustVac;
+                    if (thrust > 0) {
+                        circularizationBurnTime = circularizationDeltaV * currentMass / thrust;
+                    }
+                }
+                
+                const burnStartTimeBeforeApo = circularizationBurnTime / 2;
+                
+                // Only add event if we're ascending and haven't reached burn start time yet
+                if (isAscending && timeToApoapsis > burnStartTimeBeforeApo && circularizationBurnTime > 0) {
+                    const timeUntilBurnStart = timeToApoapsis - burnStartTimeBeforeApo;
+                    if (timeUntilBurnStart > 0 && timeUntilBurnStart < 10000) {
+                        events.push({ 
+                            time: timeUntilBurnStart, 
+                            name: 'Circularization burn start',
+                            type: 'circularization',
+                            burnTime: circularizationBurnTime,
+                            deltaV: circularizationDeltaV
+                        });
+                    }
+                }
+            }
+            
+            // PHASE 3: Retrograde burn at periapsis (edge case)
+            if (periError >= -tolerance && apoError > tolerance) {
+                // Calculate time to periapsis
+                const altitudeToPeriapsis = altitude - orbit.periapsis;
+                let timeToPeriapsis = Infinity;
+                
+                if (!isAscending && altitudeToPeriapsis > 0) {
+                    // We're descending toward periapsis
+                    timeToPeriapsis = altitudeToPeriapsis / Math.max(1, -vVertical);
+                }
+                
+                // Calculate retrograde delta-v and burn time
+                const r_peri = EARTH_RADIUS + orbit.periapsis;
+                const r_target = EARTH_RADIUS + GUIDANCE_CONFIG.targetAltitude;
+                const a_target = (r_peri + r_target) / 2;
+                const v_peri_target = Math.sqrt(mu * (2 / r_peri - 1 / a_target));
+                const v_at_peri = orbit.semiMajorAxis > 0
+                    ? Math.sqrt(mu * (2 / r_peri - 1 / orbit.semiMajorAxis))
+                    : velocity;
+                const retrogradeDeltaV = Math.max(0, v_at_peri - v_peri_target);
+                
+                let retrogradeBurnTime = 0;
+                if (state.currentStage < ROCKET_CONFIG.stages.length && retrogradeDeltaV > 0) {
+                    const stage = ROCKET_CONFIG.stages[state.currentStage];
+                    const currentMass = getTotalMass();
+                    const thrust = stage.thrustVac;
+                    if (thrust > 0) {
+                        retrogradeBurnTime = retrogradeDeltaV * currentMass / thrust;
+                    }
+                }
+                
+                const burnStartTimeBeforePeri = retrogradeBurnTime / 2;
+                
+                // Only add event if we're descending toward periapsis and haven't reached burn start time yet
+                if (!isAscending && timeToPeriapsis > burnStartTimeBeforePeri && timeToPeriapsis < Infinity && retrogradeBurnTime > 0) {
+                    const timeUntilBurnStart = timeToPeriapsis - burnStartTimeBeforePeri;
+                    if (timeUntilBurnStart > 0 && timeUntilBurnStart < 10000) {
+                        events.push({ 
+                            time: timeUntilBurnStart, 
+                            name: 'Retrograde burn start',
+                            type: 'retrograde',
+                            burnTime: retrogradeBurnTime,
+                            deltaV: retrogradeDeltaV
+                        });
+                    }
+                }
+            }
+            
+            return events;
+        }
+        
         function getNextEvent() {
             const altitude = getAltitude();
             const velocity = Math.sqrt(state.vx * state.vx + state.vy * state.vy);
@@ -1551,6 +1818,10 @@
                     }
                 }
             }
+            
+            // Add burn events (circularization and retrograde)
+            const burnEvents = calculateBurnEvents();
+            events.push(...burnEvents);
             
             // Return the event with the shortest time
             if (events.length > 0) {
@@ -1919,7 +2190,7 @@
                 const a = -mu / (2 * energy);
                 const h = state.x * state.vy - state.y * state.vx;
                 const e = Math.sqrt(Math.max(0, 1 + (2 * energy * h * h) / (mu * mu)));
-                if (e < 1 && a > 0 && a < EARTH_RADIUS * 50 && e > 0.001) {
+                if (e < 1 && a > 0 && a < EARTH_RADIUS * 50 && e >= 0) {
                     // Calculate orbit orientation using eccentricity vector (more stable)
                     const v2 = v * v;
                     const rVec = { x: state.x, y: state.y };
@@ -1933,45 +2204,55 @@
                     };
                     
                     // Argument of periapsis (angle of periapsis from reference direction)
-                    const periapsisAngle = Math.atan2(eVec.y, eVec.x);
+                    // For circular orbits (e ≈ 0), use current position angle as reference
+                    let periapsisAngle;
+                    if (e < 0.001) {
+                        // Circular orbit - any angle works, use current position
+                        periapsisAngle = Math.atan2(rVec.y, rVec.x);
+                    } else {
+                        periapsisAngle = Math.atan2(eVec.y, eVec.x);
+                    }
                     
-                    // Current true anomaly - verify it matches current position
-                    const rDotE = rVec.x * eVec.x + rVec.y * eVec.y;
-                    const cosNu = Math.max(-1, Math.min(1, rDotE / (r * e)));
-                    const rDotVNorm = rDotV / Math.sqrt(mu * a);
-                    const sinNu = Math.max(-1, Math.min(1, rDotVNorm / e));
-                    const nu = Math.atan2(sinNu, cosNu);
-                    
-                    // Verify: current position should be at periapsisAngle + nu
-                    // So orbit is drawn with periapsis at periapsisAngle
-                    const theta0 = periapsisAngle;
-                    
+                    // For circular orbits, draw a simple circle
+                    // For elliptical orbits, use the parametric equation
                     ctx.beginPath();
                     let firstPoint = true;
                     let lastValidPoint = null;
-                    for (let ang = 0; ang <= Math.PI * 2 + 0.05; ang += 0.01) {
-                        const rOrb = a * (1 - e * e) / (1 + e * Math.cos(ang));
-                        if (rOrb > EARTH_RADIUS && rOrb < EARTH_RADIUS * 50 && isFinite(rOrb)) {
-                            const xO = rOrb * Math.cos(ang + theta0);
-                            const yO = rOrb * Math.sin(ang + theta0);
-                            if (isFinite(xO) && isFinite(yO)) {
-                                if (firstPoint) {
-                                    ctx.moveTo(xO, yO);
-                                    firstPoint = false;
-                                    lastValidPoint = { x: xO, y: yO };
-                                } else {
-                                    // Only draw if point is reasonable (not a huge jump)
-                                    if (lastValidPoint) {
-                                        const dx = xO - lastValidPoint.x;
-                                        const dy = yO - lastValidPoint.y;
-                                        const dist = Math.sqrt(dx * dx + dy * dy);
-                                        if (dist < EARTH_RADIUS * 10) { // Reasonable step size
+                    
+                    if (e < 0.001) {
+                        // Circular orbit - draw as a circle with radius = a
+                        const radius = a;
+                        if (radius > EARTH_RADIUS && radius < EARTH_RADIUS * 50) {
+                            // Draw full circle centered at origin
+                            ctx.arc(0, 0, radius, 0, Math.PI * 2);
+                        }
+                    } else {
+                        // Elliptical orbit - use parametric equation
+                        const theta0 = periapsisAngle;
+                        for (let ang = 0; ang <= Math.PI * 2 + 0.05; ang += 0.01) {
+                            const rOrb = a * (1 - e * e) / (1 + e * Math.cos(ang));
+                            if (rOrb > EARTH_RADIUS && rOrb < EARTH_RADIUS * 50 && isFinite(rOrb)) {
+                                const xO = rOrb * Math.cos(ang + theta0);
+                                const yO = rOrb * Math.sin(ang + theta0);
+                                if (isFinite(xO) && isFinite(yO)) {
+                                    if (firstPoint) {
+                                        ctx.moveTo(xO, yO);
+                                        firstPoint = false;
+                                        lastValidPoint = { x: xO, y: yO };
+                                    } else {
+                                        // Only draw if point is reasonable (not a huge jump)
+                                        if (lastValidPoint) {
+                                            const dx = xO - lastValidPoint.x;
+                                            const dy = yO - lastValidPoint.y;
+                                            const dist = Math.sqrt(dx * dx + dy * dy);
+                                            if (dist < EARTH_RADIUS * 10) { // Reasonable step size
+                                                ctx.lineTo(xO, yO);
+                                                lastValidPoint = { x: xO, y: yO };
+                                            }
+                                        } else {
                                             ctx.lineTo(xO, yO);
                                             lastValidPoint = { x: xO, y: yO };
                                         }
-                                    } else {
-                                        ctx.lineTo(xO, yO);
-                                        lastValidPoint = { x: xO, y: yO };
                                     }
                                 }
                             }
