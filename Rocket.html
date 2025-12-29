@@ -373,7 +373,7 @@
         // ============================================================================
         const GUIDANCE_CONFIG = {
             // Target orbit
-            targetAltitude: 400000,          // meters — target circular orbit
+            targetAltitude: 300000,          // meters — target circular orbit
             
             // Atmosphere threshold
             atmosphereLimit: 70000,          // meters — above this, we're in "vacuum"
@@ -768,7 +768,6 @@
             // ------------------------------------------------------------------------
             
             else {
-                // PRIORITY 3: ANGLE — Correct orbit shape
                 phase = 'vacuum-guidance';
                 
                 // Start with prograde as baseline
@@ -778,76 +777,226 @@
                 const apoapsisError = orbit.apoapsis - GUIDANCE_CONFIG.targetAltitude;
                 const periapsisError = orbit.periapsis - GUIDANCE_CONFIG.targetAltitude;
                 
-                // Decision logic based on orbit state
+                debugInfo.apoapsisError = apoapsisError;
+                debugInfo.periapsisError = periapsisError;
+                debugInfo.eccentricity = orbit.eccentricity;
                 
-                if (orbit.apoapsis < GUIDANCE_CONFIG.targetAltitude * 0.95) {
-                    // Apoapsis too low — need to pitch UP to raise it
-                    // The further below target, the more we pitch up
-                    const deficit = GUIDANCE_CONFIG.targetAltitude - orbit.apoapsis;
-                    correction = Math.min(GUIDANCE_CONFIG.maxPitchCorrection, deficit / 50000 * 10);
-                    debugInfo.reason = 'Raising apoapsis — pitching up';
+                // ================================================================
+                // ORBIT CORRECTION LOGIC
+                // ================================================================
+                // 
+                // Key insight: We're currently BELOW apoapsis (ascending).
+                // When below apoapsis:
+                //   - Thrusting HORIZONTAL raises APOAPSIS
+                //   - Thrusting VERTICAL raises PERIAPSIS (and current altitude)
+                //
+                // So:
+                //   - Apoapsis too LOW  → pitch DOWN (more horizontal thrust)
+                //   - Apoapsis too HIGH → pitch UP (more vertical thrust) or COAST
+                //   - Periapsis too LOW → this is trickier... 
+                //
+                // For periapsis: when we're below apoapsis, thrusting horizontal
+                // raises apoapsis, not periapsis. To raise periapsis efficiently,
+                // we need to thrust at apoapsis. But we're not there yet.
+                //
+                // The solution: 
+                //   1. First, get apoapsis to target (priority)
+                //   2. Then coast to apoapsis
+                //   3. Then circularize by thrusting prograde at apoapsis
+                //
+                // For now (during ascent), focus on apoapsis control.
+                // ================================================================
+                
+                // Are we still ascending? (vertical velocity positive)
+                const isAscending = vVertical > 0;
+                
+                // ================================================================
+                // ESTIMATE TIME TO APOAPSIS
+                // ================================================================
+                const altitudeToApoapsis = orbit.apoapsis - altitude;
+                let timeToApoapsis = 0;
+                
+                if (isAscending && altitudeToApoapsis > 0) {
+                    // Rough estimate: time = distance / vertical velocity
+                    timeToApoapsis = altitudeToApoapsis / Math.max(1, vVertical);
+                } else if (!isAscending) {
+                    // We're descending - we're past apoapsis
+                    timeToApoapsis = 0;
                 }
-                else if (orbit.apoapsis > GUIDANCE_CONFIG.targetAltitude * 1.05) {
-                    // Apoapsis too high — need to pitch DOWN
-                    const excess = orbit.apoapsis - GUIDANCE_CONFIG.targetAltitude;
-                    correction = Math.max(-GUIDANCE_CONFIG.maxPitchCorrection, -excess / 50000 * 10);
-                    debugInfo.reason = 'Lowering apoapsis — pitching down';
-                }
-                else {
-                    // Apoapsis is close to target — focus on periapsis (circularization)
+                
+                // ================================================================
+                // CALCULATE CIRCULARIZATION DELTA-V
+                // ================================================================
+                // At apoapsis, we need to add velocity to circularize
+                // Circular velocity at apoapsis: v_circ = √(μ/r_apo)
+                // Current velocity at apoapsis (from vis-viva): v_apo = √(μ(2/r_apo - 1/a))
+                // Delta-v needed: Δv = v_circ - v_apo
+                
+                const mu = G * EARTH_MASS;
+                const r_apo = EARTH_RADIUS + orbit.apoapsis;  // Radius at apoapsis
+                const v_circular = Math.sqrt(mu / r_apo);     // Circular velocity at apoapsis
+                
+                // Velocity at apoapsis (vis-viva equation)
+                const v_at_apo = orbit.semiMajorAxis > 0 
+                    ? Math.sqrt(mu * (2 / r_apo - 1 / orbit.semiMajorAxis))
+                    : velocity;
+                
+                // Delta-v needed to circularize
+                const circularizationDeltaV = Math.max(0, v_circular - v_at_apo);
+                
+                // ================================================================
+                // CALCULATE BURN TIME FOR CIRCULARIZATION
+                // ================================================================
+                // Using rocket equation: t = (m0 / mdot) * (1 - e^(-Δv / (Isp * g)))
+                // Simplified: For constant thrust, t ≈ Δv * m / thrust
+                
+                let circularizationBurnTime = 0;
+                if (state.currentStage < ROCKET_CONFIG.stages.length) {
+                    const stage = ROCKET_CONFIG.stages[state.currentStage];
+                    const currentMass = getTotalMass();
+                    const thrust = stage.thrustVac; // Use vacuum thrust
                     
-                    if (orbit.periapsis < GUIDANCE_CONFIG.targetAltitude * 0.8) {
-                        // Periapsis way too low — pitch DOWN to add horizontal velocity
-                        const deficit = GUIDANCE_CONFIG.targetAltitude - orbit.periapsis;
-                        correction = Math.max(-GUIDANCE_CONFIG.maxPitchCorrection, -deficit / 100000 * 10);
-                        debugInfo.reason = 'Raising periapsis — pitching down for horizontal velocity';
+                    if (thrust > 0) {
+                        // Simple estimate: t = Δv * m / F
+                        circularizationBurnTime = circularizationDeltaV * currentMass / thrust;
                     }
-                    else if (orbit.periapsis < GUIDANCE_CONFIG.targetAltitude * 0.95) {
-                        // Periapsis slightly low — gentle pitch down
-                        const deficit = GUIDANCE_CONFIG.targetAltitude - orbit.periapsis;
-                        correction = Math.max(-5, -deficit / 50000 * 5);
-                        debugInfo.reason = 'Fine-tuning periapsis — gentle pitch down';
+                }
+                
+                // When to start the burn: half the burn time before apoapsis
+                const burnStartTimeBeforeApo = circularizationBurnTime / 2;
+                const shouldStartCircularization = timeToApoapsis <= burnStartTimeBeforeApo && 
+                                                   circularizationBurnTime > 0 &&
+                                                   orbit.periapsis < GUIDANCE_CONFIG.targetAltitude;
+                
+                // Near apoapsis: within 50km altitude and descending, or time-based
+                const nearApoapsis = (altitudeToApoapsis < 50000 && !isAscending) || timeToApoapsis < 5;
+                
+                debugInfo.timeToApoapsis = timeToApoapsis;
+                debugInfo.circDeltaV = circularizationDeltaV;
+                debugInfo.circBurnTime = circularizationBurnTime;
+                debugInfo.burnStartTime = burnStartTimeBeforeApo;
+                
+                // ================================================================
+                // FEEDBACK-BASED GUIDANCE LOGIC
+                // ================================================================
+                // Uses proportional control to smoothly approach targets
+                // and cut thrust precisely when targets are reached.
+                
+                const apoError = orbit.apoapsis - GUIDANCE_CONFIG.targetAltitude;
+                const periError = orbit.periapsis - GUIDANCE_CONFIG.targetAltitude;
+                
+                // Tolerance: how close is "good enough" (in meters)
+                const tolerance = 10000; // 10km
+                
+                // PHASE 1: Apoapsis below target — raise it
+                if (apoError < -tolerance) {
+                    // ============================================================
+                    // RAISING APOAPSIS
+                    // ============================================================
+                    // Pitch down to add horizontal velocity, raising apoapsis
+                    
+                    const deficit = -apoError; // Positive value
+                    
+                    // Proportional pitch correction: more deficit = pitch more horizontal
+                    correction = Math.max(-GUIDANCE_CONFIG.maxPitchCorrection, -deficit / 50000 * 10);
+                    
+                    // Proportional throttle: reduce throttle as we approach target
+                    // This prevents overshoot by slowing down near the target
+                    if (deficit < 50000) {
+                        // Within 50km of target: scale throttle down
+                        commandedThrottle = Math.max(0.1, deficit / 50000);
+                        debugInfo.reason = 'Raising apoapsis — throttling down (' + (deficit/1000).toFixed(0) + 'km to go)';
+                    } else {
+                        commandedThrottle = 1.0;
+                        debugInfo.reason = 'Raising apoapsis — full throttle';
+                    }
+                }
+                // PHASE 2: Apoapsis at or above target, periapsis below — circularize
+                else if (periError < -tolerance) {
+                    // ============================================================
+                    // CIRCULARIZATION — Symmetric burn around apoapsis
+                    // ============================================================
+                    
+                    const periDeficit = -periError; // Positive value
+                    
+                    if (shouldStartCircularization || nearApoapsis) {
+                        // Time to burn! We're within the burn window
+                        correction = 0;  // Prograde
+                        
+                        // Proportional throttle for circularization
+                        // Reduce throttle as periapsis approaches target
+                        if (periDeficit < 50000) {
+                            // Within 50km of target: scale throttle down
+                            commandedThrottle = Math.max(0.1, periDeficit / 50000);
+                            debugInfo.reason = 'Circularizing — throttling down (' + (periDeficit/1000).toFixed(0) + 'km Pe to go)';
+                        } else {
+                            commandedThrottle = 1.0;
+                            debugInfo.reason = nearApoapsis 
+                                ? 'At apoapsis — circularizing' 
+                                : 'Starting circularization (T-' + timeToApoapsis.toFixed(0) + 's to apo)';
+                        }
+                    }
+                    else if (isAscending) {
+                        // Coast to apoapsis, waiting for burn start time
+                        commandedThrottle = 0;
+                        correction = 0;
+                        debugInfo.reason = 'Coasting to burn start (T-' + timeToApoapsis.toFixed(0) + 's, burn at T-' + burnStartTimeBeforeApo.toFixed(0) + 's)';
                     }
                     else {
-                        // Both apoapsis and periapsis are good — hold prograde
-                        correction = 0;
-                        debugInfo.reason = 'Orbit nominal — holding prograde';
+                        // We're descending past apoapsis - burn now!
+                        correction = 0;  // Prograde
+                        
+                        // Proportional throttle
+                        if (periDeficit < 50000) {
+                            commandedThrottle = Math.max(0.1, periDeficit / 50000);
+                            debugInfo.reason = 'Past apoapsis — circularizing (throttled)';
+                        } else {
+                            commandedThrottle = 1.0;
+                            debugInfo.reason = 'Past apoapsis — circularizing';
+                        }
                     }
                 }
-                
-                commandedPitch = basePitch + correction;
+                // PHASE 3: Both apoapsis and periapsis within tolerance
+                else {
+                    // ============================================================
+                    // ORBIT ACHIEVED
+                    // ============================================================
+                    commandedThrottle = 0;
+                    correction = 0;
+                    debugInfo.reason = 'Orbit achieved — coasting';
+                }
                 
                 debugInfo.apoapsisError = apoapsisError;
                 debugInfo.periapsisError = periapsisError;
+                
+                commandedPitch = basePitch + correction;
                 debugInfo.correction = correction;
-                debugInfo.eccentricity = orbit.eccentricity;
+                debugInfo.isAscending = isAscending;
+                debugInfo.nearApoapsis = nearApoapsis;
                 
                 // --------------------------------------------------------------------
-                // PRIORITY 4: VELOCITY — Throttle control near end of burn
+                // PRIORITY 4: VELOCITY — Throttle control
                 // --------------------------------------------------------------------
                 
-                // Only throttle down if:
-                // 1. We're in vacuum (past atmosphere)
-                // 2. We have more delta-v than we need
-                // 3. Our orbit is close to target (don't throttle down if we're way off)
-                
-                const orbitIsClose = Math.abs(apoapsisError) < 50000 && orbit.periapsis > 0;
-                
-                if (orbitIsClose && remainingDeltaV > velocityDeficit * GUIDANCE_CONFIG.throttleDownMargin) {
-                    // We have excess delta-v — throttle down to hit target precisely
+                // Don't override throttle if we already set it to 0 (coasting)
+                if (commandedThrottle !== 0) {
+                    const orbitIsClose = Math.abs(apoapsisError) < 50000 && orbit.periapsis > 0;
                     
-                    // Calculate ideal throttle to use remaining fuel over remaining velocity needed
-                    const idealThrottle = velocityDeficit / remainingDeltaV;
-                    
-                    commandedThrottle = Math.max(GUIDANCE_CONFIG.minThrottle, idealThrottle);
-                    
-                    debugInfo.throttleReason = 'Throttling down for precision';
-                    debugInfo.velocityDeficit = velocityDeficit;
-                    debugInfo.remainingDeltaV = remainingDeltaV;
+                    if (orbitIsClose && remainingDeltaV > velocityDeficit * GUIDANCE_CONFIG.throttleDownMargin) {
+                        const idealThrottle = velocityDeficit / remainingDeltaV;
+                        commandedThrottle = Math.max(GUIDANCE_CONFIG.minThrottle, idealThrottle);
+                        debugInfo.throttleReason = 'Throttling down for precision';
+                    }
+                    else {
+                        commandedThrottle = 1.0;
+                        debugInfo.throttleReason = 'Full throttle';
+                    }
                 }
                 else {
-                    commandedThrottle = 1.0;
-                    debugInfo.throttleReason = 'Full throttle';
+                    // Already coasting (either apoapsis too high, or at target and ascending to apoapsis)
+                    if (!debugInfo.throttleReason) {
+                        debugInfo.throttleReason = 'Coasting';
+                    }
                 }
             }
             
