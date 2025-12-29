@@ -340,23 +340,568 @@
             totalLength: 70
         };
         
-        // Pitch program - 90° = pointing straight UP, 0° = pointing horizontal (east)
-        const PITCH_PROGRAM = [
-            { time: 0, pitch: 90 },
-            { time: 10, pitch: 90 },
-            { time: 20, pitch: 80 },
-            { time: 40, pitch: 68 },
-            { time: 60, pitch: 55 },
-            { time: 80, pitch: 43 },
-            { time: 100, pitch: 33 },
-            { time: 120, pitch: 25 },
-            { time: 150, pitch: 17 },
-            { time: 180, pitch: 11 },
-            { time: 220, pitch: 6 },
-            { time: 280, pitch: 3 },
-            { time: 400, pitch: 0 },
-            { time: 600, pitch: 0 }
-        ];
+        
+        
+        // ============================================================================
+        // CLOSED-LOOP GUIDANCE SYSTEM v3
+        // ============================================================================
+        // 
+        // V3 PHILOSOPHY: Simple, priority-based guidance that focuses on what matters
+        // when it matters. In atmosphere, we DON'T optimize for orbit - we escape.
+        // Above atmosphere, we optimize for target orbit.
+        //
+        // PRIORITY SYSTEM:
+        //   1. HEIGHT      — Get above 70km (out of significant atmosphere)
+        //   2. MAX Q       — Don't exceed structural limits, follow prograde in atmo
+        //   3. ANGLE       — Correct orbit shape (apoapsis/periapsis) - ONLY above 70km
+        //   4. VELOCITY    — Throttle down near end to hit target precisely
+        //
+        // KEY INSIGHT: Don't try to optimize trajectory in atmosphere.
+        // Get high, get fast, THEN correct.
+        //
+        // ATMOSPHERIC PHASE (below 70km):
+        //   - Follow prograde (minimizes angle of attack and drag)
+        //   - Smooth altitude-based minimum pitch constraint (prevents premature pitchover)
+        //   - Turn rate limiting (prevents gravity turn from running away)
+        //   - Max Q protection (follow prograde exactly when near structural limits)
+        //
+        // VACUUM PHASE (above 70km):
+        //   - Active closed-loop guidance to reach target orbit
+        //   - Adjusts pitch based on apoapsis/periapsis errors
+        //   - Throttle control for precise orbit insertion
+        //
+        // ============================================================================
+        const GUIDANCE_CONFIG = {
+            // Target orbit
+            targetAltitude: 400000,          // meters — target circular orbit
+            
+            // Atmosphere threshold
+            atmosphereLimit: 70000,          // meters — above this, we're in "vacuum"
+            
+            // Max Q protection
+            maxQ: 35000,                     // Pa — typical max Q for Falcon 9 ~32-35 kPa
+            
+            // Pitch constraints
+            maxPitchCorrection: 10,          // degrees — max deviation from prograde in vacuum
+            maxPitchRate: 2.0,               // degrees/second — physical rotation limit
+            
+            // Throttle control
+            throttleDownMargin: 1.15,        // Start throttling when deltaV reserve > 115% needed
+            minThrottle: 0.4,                // Don't throttle below 40%
+            
+            // Initial ascent
+            initialPitch: 85,                // degrees — slight eastward tilt from start
+            pitchKickStart: 3,               // seconds — when to start pitching from vertical
+            pitchKickEnd: 15,                // seconds — when to reach initialPitch
+        };
+        
+        let guidanceState = {
+            phase: 'pre-launch',
+            lastCommandedPitch: 90,
+            throttle: 1.0,
+            lastFlightPathAngle: 90,
+        };
+        
+        function resetGuidance() {
+            guidanceState = {
+                phase: 'pre-launch',
+                lastCommandedPitch: 90,
+                throttle: 1.0,
+                lastFlightPathAngle: 90,
+            };
+        }
+        
+        // ============================================================================
+        // HELPER: Predict orbit from current state (vacuum assumption)
+        // ============================================================================
+        function predictOrbit(state) {
+            const r = Math.sqrt(state.x * state.x + state.y * state.y);
+            const v = Math.sqrt(state.vx * state.vx + state.vy * state.vy);
+            const mu = G * EARTH_MASS;
+            
+            // Specific orbital energy: ε = v²/2 - μ/r
+            const energy = (v * v / 2) - (mu / r);
+            
+            // Semi-major axis: a = -μ/(2ε)
+            // If energy ≥ 0, we're on escape trajectory
+            if (energy >= 0) {
+                return {
+                    apoapsis: Infinity,
+                    periapsis: r - EARTH_RADIUS,
+                    semiMajorAxis: Infinity,
+                    eccentricity: 1,
+                    energy: energy,
+                    isEscape: true
+                };
+            }
+            
+            const semiMajorAxis = -mu / (2 * energy);
+            
+            // Angular momentum: h = r × v (magnitude in 2D)
+            const angularMomentum = state.x * state.vy - state.y * state.vx;
+            
+            // Eccentricity: e = √(1 + 2εh²/μ²)
+            const eSquared = 1 + (2 * energy * angularMomentum * angularMomentum) / (mu * mu);
+            const eccentricity = Math.sqrt(Math.max(0, eSquared));
+            
+            // Apoapsis and periapsis
+            const apoapsis = semiMajorAxis * (1 + eccentricity) - EARTH_RADIUS;
+            const periapsis = semiMajorAxis * (1 - eccentricity) - EARTH_RADIUS;
+            
+            return {
+                apoapsis: apoapsis,
+                periapsis: periapsis,
+                semiMajorAxis: semiMajorAxis,
+                eccentricity: eccentricity,
+                energy: energy,
+                angularMomentum: angularMomentum,
+                isEscape: false
+            };
+        }
+        
+        // ============================================================================
+        // HELPER: Compute remaining delta-v from propellant (Tsiolkovsky equation)
+        // ============================================================================
+        function computeRemainingDeltaV(state) {
+            // Δv = Isp × g₀ × ln(m_initial / m_final)
+            
+            const g0 = 9.81;
+            let totalDeltaV = 0;
+            
+            // Current stage
+            if (state.currentStage < ROCKET_CONFIG.stages.length) {
+                const stage = ROCKET_CONFIG.stages[state.currentStage];
+                const propellant = state.propellantRemaining[state.currentStage];
+                
+                if (propellant > 0) {
+                    // Mass at start of current burn
+                    let massInitial = ROCKET_CONFIG.payload;
+                    if (!state.fairingJettisoned) massInitial += ROCKET_CONFIG.fairingMass;
+                    
+                    // Add current stage
+                    massInitial += stage.dryMass + propellant;
+                    
+                    // Add future stages
+                    for (let i = state.currentStage + 1; i < ROCKET_CONFIG.stages.length; i++) {
+                        massInitial += ROCKET_CONFIG.stages[i].dryMass + state.propellantRemaining[i];
+                    }
+                    
+                    // Mass at end (after burning current stage propellant)
+                    const massFinal = massInitial - propellant;
+                    
+                    // Use vacuum Isp (we're mostly concerned with vacuum performance)
+                    const isp = stage.ispVac;
+                    
+                    // Tsiolkovsky rocket equation
+                    totalDeltaV += isp * g0 * Math.log(massInitial / massFinal);
+                }
+            }
+            
+            // Future stages (full burns)
+            for (let i = state.currentStage + 1; i < ROCKET_CONFIG.stages.length; i++) {
+                const stage = ROCKET_CONFIG.stages[i];
+                const propellant = state.propellantRemaining[i];
+                
+                if (propellant > 0) {
+                    // Mass at start of this stage's burn
+                    let massInitial = ROCKET_CONFIG.payload;
+                    // Fairing should be jettisoned by upper stage
+                    massInitial += stage.dryMass + propellant;
+                    
+                    // Add any stages after this
+                    for (let j = i + 1; j < ROCKET_CONFIG.stages.length; j++) {
+                        massInitial += ROCKET_CONFIG.stages[j].dryMass + state.propellantRemaining[j];
+                    }
+                    
+                    const massFinal = massInitial - propellant;
+                    const isp = stage.ispVac;
+                    
+                    totalDeltaV += isp * g0 * Math.log(massInitial / massFinal);
+                }
+            }
+            
+            return totalDeltaV;
+        }
+        
+        // ============================================================================
+        // HELPER: Compute total delta-v at launch (for progress tracking)
+        // ============================================================================
+        function computeInitialDeltaV() {
+            const g0 = 9.81;
+            let totalDeltaV = 0;
+            
+            for (let i = 0; i < ROCKET_CONFIG.stages.length; i++) {
+                const stage = ROCKET_CONFIG.stages[i];
+                const propellant = stage.propellantMass;
+                
+                // Mass at start of this stage
+                let massInitial = ROCKET_CONFIG.payload + ROCKET_CONFIG.fairingMass;
+                massInitial += stage.dryMass + propellant;
+                
+                for (let j = i + 1; j < ROCKET_CONFIG.stages.length; j++) {
+                    massInitial += ROCKET_CONFIG.stages[j].dryMass + ROCKET_CONFIG.stages[j].propellantMass;
+                }
+                
+                const massFinal = massInitial - propellant;
+                
+                // Use vacuum Isp for simplicity (slight overestimate for stage 1)
+                const isp = stage.ispVac;
+                
+                totalDeltaV += isp * g0 * Math.log(massInitial / massFinal);
+            }
+            
+            return totalDeltaV;
+        }
+        
+        // ============================================================================
+        // MAIN GUIDANCE FUNCTION
+        // ============================================================================
+        function computeGuidance(state, dt) {
+            
+            // ========================================================================
+            // STEP 1: GATHER CURRENT STATE
+            // ========================================================================
+            
+            const r = Math.sqrt(state.x * state.x + state.y * state.y);
+            const altitude = r - EARTH_RADIUS;
+            const velocity = Math.sqrt(state.vx * state.vx + state.vy * state.vy);
+            
+            // Local reference frame (changes as we move around Earth)
+            const localUp = { x: state.x / r, y: state.y / r };
+            const localEast = { x: localUp.y, y: -localUp.x };
+            
+            // Decompose velocity into vertical and horizontal components
+            const vVertical = state.vx * localUp.x + state.vy * localUp.y;
+            const vHorizontal = state.vx * localEast.x + state.vy * localEast.y;
+            
+            // Flight path angle (angle of velocity from horizontal)
+            // 90° = straight up, 0° = horizontal, negative = descending
+            const flightPathAngle = Math.atan2(vVertical, vHorizontal) * 180 / Math.PI;
+            
+            // Dynamic pressure (for max Q check)
+            const airDensity = getAtmosphericDensity(altitude);
+            const { airspeed } = getAirspeed();
+            const dynamicPressure = 0.5 * airDensity * airspeed * airspeed;
+            
+            // ========================================================================
+            // STEP 2: PREDICT ORBIT (vacuum assumption)
+            // ========================================================================
+            // "If I cut engines right now, what orbit am I on?"
+            
+            const orbit = predictOrbit(state);
+            
+            // ========================================================================
+            // STEP 3: COMPUTE TARGET PARAMETERS
+            // ========================================================================
+            
+            // Circular orbit velocity at target altitude
+            const targetRadius = EARTH_RADIUS + GUIDANCE_CONFIG.targetAltitude;
+            const mu = G * EARTH_MASS;
+            const vCircular = Math.sqrt(mu / targetRadius);
+            
+            // How much more horizontal velocity do we need?
+            const velocityDeficit = vCircular - vHorizontal;
+            
+            // Remaining delta-v from propellant
+            const remainingDeltaV = computeRemainingDeltaV(state);
+            
+            // ========================================================================
+            // STEP 4: PRIORITY-BASED GUIDANCE LOGIC
+            // ========================================================================
+            
+            let commandedPitch;
+            let commandedThrottle = 1.0;
+            let phase;
+            let debugInfo = {};
+            
+            // ------------------------------------------------------------------------
+            // PRIORITY 1: HEIGHT — Get out of atmosphere
+            // ------------------------------------------------------------------------
+            
+            if (altitude < GUIDANCE_CONFIG.atmosphereLimit) {
+                
+                // Sub-case: Very early flight (first few seconds)
+                if (state.time < GUIDANCE_CONFIG.pitchKickStart) {
+                    phase = 'vertical-ascent';
+                    commandedPitch = 90;
+                    debugInfo.reason = 'Clearing pad — vertical';
+                }
+                
+                // Sub-case: Pitch kick (gradual tilt to start gravity turn)
+                else if (state.time < GUIDANCE_CONFIG.pitchKickEnd) {
+                    phase = 'pitch-kick';
+                    const progress = (state.time - GUIDANCE_CONFIG.pitchKickStart) / 
+                                   (GUIDANCE_CONFIG.pitchKickEnd - GUIDANCE_CONFIG.pitchKickStart);
+                    // Smooth cosine interpolation
+                    const smoothProgress = (1 - Math.cos(progress * Math.PI)) / 2;
+                    commandedPitch = 90 - smoothProgress * (90 - GUIDANCE_CONFIG.initialPitch);
+                    debugInfo.reason = 'Pitch kick — initiating gravity turn';
+                }
+                
+                // Sub-case: In atmosphere, past pitch kick
+                else {
+                    // ============================================================
+                    // ATMOSPHERIC PHASE — PRIORITY IS ESCAPE, NOT ORBIT SHAPING
+                    // ============================================================
+                    //
+                    // In atmosphere, we DO NOT care about:
+                    //   - Target orbit
+                    //   - Apoapsis/periapsis predictions
+                    //   - Circularization
+                    //
+                    // We ONLY care about:
+                    //   1. Not exceeding max Q (structural protection)
+                    //   2. Getting out of atmosphere efficiently
+                    //   3. Not turning so fast we nosedive
+                    //
+                    // The strategy: Follow prograde (minimizes angle of attack and drag)
+                    // but prevent the turn from running away by limiting turn rate.
+                    // ============================================================
+                    
+                    // PRIORITY 2: MAX Q — Protect structure
+                    if (dynamicPressure > GUIDANCE_CONFIG.maxQ * 0.8) {
+                        phase = 'max-q-protection';
+                        commandedPitch = flightPathAngle;
+                        debugInfo.reason = 'Max Q — following prograde exactly';
+                        debugInfo.q = dynamicPressure;
+                    }
+                    else {
+                        phase = 'atmospheric-ascent';
+                        
+                        // ============================================================
+                        // ALTITUDE-BASED MINIMUM PITCH CONSTRAINT
+                        // ============================================================
+                        // 
+                        // WHY: At low altitudes, the rocket MUST stay nearly vertical
+                        // to build altitude efficiently. Without this constraint, following
+                        // prograde alone can cause the rocket to pitch over too aggressively,
+                        // leading to insufficient altitude gain.
+                        //
+                        // HOW: Use a smooth, continuous quadratic function to define minimum
+                        // pitch as a function of altitude. This avoids discontinuities that
+                        // would cause sudden pitch changes at altitude boundaries.
+                        //
+                        // CURVE: 90° at 0km → ~75° at 30km → ~64° at 40km → ~10° at 70km
+                        // Formula: minPitch = 90 - (altitude/70km)² * 80
+                        //
+                        // IMPLEMENTATION: Soft constraint - gently encourages higher pitch
+                        // if prograde would be below minimum. Hard constraint only as final
+                        // safety check.
+                        
+                        const altitudeFraction = Math.min(1.0, altitude / GUIDANCE_CONFIG.atmosphereLimit);
+                        const minPitchForAltitude = 90 - altitudeFraction * altitudeFraction * 80; // Smooth quadratic curve
+                        
+                        // ============================================================
+                        // PROGRADE FOLLOWING WITH CONSTRAINTS
+                        // ============================================================
+                        //
+                        // CORE STRATEGY: Follow the velocity vector (prograde) to minimize
+                        // angle of attack and drag losses. But apply constraints to prevent
+                        // the gravity turn from running away.
+                        //
+                        // CONSTRAINT 1: Turn Rate Limiting
+                        //   - Calculate natural gravity turn rate: ω = g * cos(γ) / v
+                        //   - Monitor actual turn rate (how fast flight path angle is changing)
+                        //   - If actual > natural + threshold, we're turning too fast → resist
+                        //
+                        // CONSTRAINT 2: Minimum Pitch for Altitude
+                        //   - Soft constraint: gently push pitch up if below minimum
+                        //   - Hard constraint: final safety check to never go below minimum
+                        //
+                        // This approach allows the rocket to follow its natural gravity turn
+                        // while preventing it from pitching over too aggressively early in flight.
+                        
+                        // Start with prograde (minimizes angle of attack)
+                        let basePitch = flightPathAngle;
+                        
+                        // Calculate natural gravity turn rate
+                        // Formula: ω = g * cos(γ) / v  where γ = flight path angle
+                        // This is how fast gravity WOULD rotate velocity if we thrust prograde
+                        const g = getGravity(r);
+                        const gamma = flightPathAngle * Math.PI / 180;
+                        const naturalTurnRate = (g * Math.cos(gamma) / velocity) * 180 / Math.PI;  // deg/sec
+                        
+                        // Measure actual turn rate (how fast flight path angle is changing)
+                        // Positive = turning downward (flight path angle decreasing)
+                        const actualTurnRate = dt > 0 ? (guidanceState.lastFlightPathAngle - flightPathAngle) / dt : 0;
+                        
+                        // Store for next frame
+                        guidanceState.lastFlightPathAngle = flightPathAngle;
+                        
+                        // CONSTRAINT 1: Turn rate limiting
+                        // If we're turning faster than natural rate, something is wrong
+                        // (maybe drag, maybe we commanded too low a pitch earlier)
+                        // → Resist by pitching up
+                        let correction = 0;
+                        const turnRateExcess = actualTurnRate - naturalTurnRate;
+                        
+                        if (turnRateExcess > 0.5) {
+                            // Turning faster than gravity alone — resist
+                            correction = Math.min(5, turnRateExcess * 2);
+                            debugInfo.reason = 'Turn rate excess — resisting';
+                            debugInfo.turnRateExcess = turnRateExcess;
+                        }
+                        
+                        // CONSTRAINT 2: Minimum pitch for altitude (soft constraint)
+                        // If prograde would be below minimum, gently encourage higher pitch
+                        // Use soft constraint (30% push) rather than hard to avoid fighting prograde
+                        if (basePitch + correction < minPitchForAltitude) {
+                            const deficit = minPitchForAltitude - (basePitch + correction);
+                            correction += deficit * 0.3; // Gentle push, not hard constraint
+                            debugInfo.reason = 'Altitude minimum pitch — gentle correction';
+                        }
+                        
+                        // Final hard constraint: safety check to never go below minimum
+                        commandedPitch = Math.max(minPitchForAltitude, basePitch + correction);
+                        
+                        debugInfo.basePitch = basePitch;
+                        debugInfo.correction = correction;
+                        debugInfo.minPitchForAltitude = minPitchForAltitude;
+                        debugInfo.naturalTurnRate = naturalTurnRate;
+                        debugInfo.actualTurnRate = actualTurnRate;
+                    }
+                }
+            }
+            
+            // ------------------------------------------------------------------------
+            // ABOVE ATMOSPHERE: Active guidance
+            // ------------------------------------------------------------------------
+            
+            else {
+                // PRIORITY 3: ANGLE — Correct orbit shape
+                phase = 'vacuum-guidance';
+                
+                // Start with prograde as baseline
+                let basePitch = flightPathAngle;
+                let correction = 0;
+                
+                const apoapsisError = orbit.apoapsis - GUIDANCE_CONFIG.targetAltitude;
+                const periapsisError = orbit.periapsis - GUIDANCE_CONFIG.targetAltitude;
+                
+                // Decision logic based on orbit state
+                
+                if (orbit.apoapsis < GUIDANCE_CONFIG.targetAltitude * 0.95) {
+                    // Apoapsis too low — need to pitch UP to raise it
+                    // The further below target, the more we pitch up
+                    const deficit = GUIDANCE_CONFIG.targetAltitude - orbit.apoapsis;
+                    correction = Math.min(GUIDANCE_CONFIG.maxPitchCorrection, deficit / 50000 * 10);
+                    debugInfo.reason = 'Raising apoapsis — pitching up';
+                }
+                else if (orbit.apoapsis > GUIDANCE_CONFIG.targetAltitude * 1.05) {
+                    // Apoapsis too high — need to pitch DOWN
+                    const excess = orbit.apoapsis - GUIDANCE_CONFIG.targetAltitude;
+                    correction = Math.max(-GUIDANCE_CONFIG.maxPitchCorrection, -excess / 50000 * 10);
+                    debugInfo.reason = 'Lowering apoapsis — pitching down';
+                }
+                else {
+                    // Apoapsis is close to target — focus on periapsis (circularization)
+                    
+                    if (orbit.periapsis < GUIDANCE_CONFIG.targetAltitude * 0.8) {
+                        // Periapsis way too low — pitch DOWN to add horizontal velocity
+                        const deficit = GUIDANCE_CONFIG.targetAltitude - orbit.periapsis;
+                        correction = Math.max(-GUIDANCE_CONFIG.maxPitchCorrection, -deficit / 100000 * 10);
+                        debugInfo.reason = 'Raising periapsis — pitching down for horizontal velocity';
+                    }
+                    else if (orbit.periapsis < GUIDANCE_CONFIG.targetAltitude * 0.95) {
+                        // Periapsis slightly low — gentle pitch down
+                        const deficit = GUIDANCE_CONFIG.targetAltitude - orbit.periapsis;
+                        correction = Math.max(-5, -deficit / 50000 * 5);
+                        debugInfo.reason = 'Fine-tuning periapsis — gentle pitch down';
+                    }
+                    else {
+                        // Both apoapsis and periapsis are good — hold prograde
+                        correction = 0;
+                        debugInfo.reason = 'Orbit nominal — holding prograde';
+                    }
+                }
+                
+                commandedPitch = basePitch + correction;
+                
+                debugInfo.apoapsisError = apoapsisError;
+                debugInfo.periapsisError = periapsisError;
+                debugInfo.correction = correction;
+                debugInfo.eccentricity = orbit.eccentricity;
+                
+                // --------------------------------------------------------------------
+                // PRIORITY 4: VELOCITY — Throttle control near end of burn
+                // --------------------------------------------------------------------
+                
+                // Only throttle down if:
+                // 1. We're in vacuum (past atmosphere)
+                // 2. We have more delta-v than we need
+                // 3. Our orbit is close to target (don't throttle down if we're way off)
+                
+                const orbitIsClose = Math.abs(apoapsisError) < 50000 && orbit.periapsis > 0;
+                
+                if (orbitIsClose && remainingDeltaV > velocityDeficit * GUIDANCE_CONFIG.throttleDownMargin) {
+                    // We have excess delta-v — throttle down to hit target precisely
+                    
+                    // Calculate ideal throttle to use remaining fuel over remaining velocity needed
+                    const idealThrottle = velocityDeficit / remainingDeltaV;
+                    
+                    commandedThrottle = Math.max(GUIDANCE_CONFIG.minThrottle, idealThrottle);
+                    
+                    debugInfo.throttleReason = 'Throttling down for precision';
+                    debugInfo.velocityDeficit = velocityDeficit;
+                    debugInfo.remainingDeltaV = remainingDeltaV;
+                }
+                else {
+                    commandedThrottle = 1.0;
+                    debugInfo.throttleReason = 'Full throttle';
+                }
+            }
+            
+            // ========================================================================
+            // STEP 5: APPLY CONSTRAINTS
+            // ========================================================================
+            
+            // Clamp pitch to valid range
+            commandedPitch = Math.max(-5, Math.min(90, commandedPitch));
+            
+            // Rate limiting — rocket can only rotate so fast
+            if (dt > 0) {
+                const maxChange = GUIDANCE_CONFIG.maxPitchRate * dt;
+                const desiredChange = commandedPitch - guidanceState.lastCommandedPitch;
+                
+                if (Math.abs(desiredChange) > maxChange) {
+                    commandedPitch = guidanceState.lastCommandedPitch + 
+                                    Math.sign(desiredChange) * maxChange;
+                }
+            }
+            
+            // Store for next frame
+            guidanceState.lastCommandedPitch = commandedPitch;
+            guidanceState.phase = phase;
+            guidanceState.throttle = commandedThrottle;
+            
+            // ========================================================================
+            // STEP 6: CONVERT TO THRUST VECTOR
+            // ========================================================================
+            
+            const pitchRad = commandedPitch * Math.PI / 180;
+            const thrustDir = {
+                x: Math.cos(pitchRad) * localEast.x + Math.sin(pitchRad) * localUp.x,
+                y: Math.cos(pitchRad) * localEast.y + Math.sin(pitchRad) * localUp.y
+            };
+            
+            // Normalize
+            const mag = Math.sqrt(thrustDir.x * thrustDir.x + thrustDir.y * thrustDir.y);
+            if (mag > 0) {
+                thrustDir.x /= mag;
+                thrustDir.y /= mag;
+            }
+            
+            return {
+                pitch: commandedPitch,
+                thrustDir: thrustDir,
+                throttle: commandedThrottle,
+                phase: phase,
+                debug: debugInfo,
+                orbit: orbit,
+                velocityDeficit: velocityDeficit,
+                remainingDeltaV: remainingDeltaV,
+            };
+        }
         
         let state = {
             running: false,
@@ -416,10 +961,13 @@
                 autoZoom: true,
                 cameraMode: 'rocket', // 'rocket' or 'earth'
                 burnMode: null, // null, 'prograde', 'retrograde', 'normal', 'anti-normal', 'radial', 'anti-radial'
-                burnStartTime: null // Time when current burn started
+                burnStartTime: null, // Time when current burn started
+                guidancePhase: 'pre-launch',
+                guidancePitch: 90.0
             };
             
             document.getElementById('event-list').innerHTML = '';
+            resetGuidance();
         }
         
         function getTotalMass() {
@@ -450,32 +998,33 @@
         }
         
         function getPitch(time) {
-            for (let i = 0; i < PITCH_PROGRAM.length - 1; i++) {
-                if (time >= PITCH_PROGRAM[i].time && time < PITCH_PROGRAM[i + 1].time) {
-                    const t = (time - PITCH_PROGRAM[i].time) / (PITCH_PROGRAM[i + 1].time - PITCH_PROGRAM[i].time);
-                    return PITCH_PROGRAM[i].pitch + t * (PITCH_PROGRAM[i + 1].pitch - PITCH_PROGRAM[i].pitch);
-                }
+            // Use guidance system pitch (pitch from horizontal: 0° = east, 90° = up)
+            // Convert to pitch from vertical for backward compatibility (90° = up, 0° = horizontal)
+            if (state.guidancePitch !== undefined) {
+                return state.guidancePitch; // Guidance system already uses correct convention
             }
-            return PITCH_PROGRAM[PITCH_PROGRAM.length - 1].pitch;
+            // Fallback if guidance hasn't run yet
+            return 90.0;
         }
         
-        function getCurrentThrust(altitude) {
+        function getCurrentThrust(altitude, throttle = 1.0) {
             if (!state.engineOn || state.currentStage >= ROCKET_CONFIG.stages.length) return 0;
             if (state.propellantRemaining[state.currentStage] <= 0) return 0;
             
             const stage = ROCKET_CONFIG.stages[state.currentStage];
             const pressureRatio = getAtmosphericPressure(altitude) / SEA_LEVEL_PRESSURE;
-            return stage.thrust * pressureRatio + stage.thrustVac * (1 - pressureRatio);
+            const baseThrust = stage.thrust * pressureRatio + stage.thrustVac * (1 - pressureRatio);
+            return baseThrust * throttle;
         }
         
-        function getMassFlowRate(altitude) {
+        function getMassFlowRate(altitude, throttle = 1.0) {
             if (!state.engineOn || state.currentStage >= ROCKET_CONFIG.stages.length) return 0;
             if (state.propellantRemaining[state.currentStage] <= 0) return 0;
             
             const stage = ROCKET_CONFIG.stages[state.currentStage];
             const pressureRatio = getAtmosphericPressure(altitude) / SEA_LEVEL_PRESSURE;
             const isp = stage.isp * pressureRatio + stage.ispVac * (1 - pressureRatio);
-            return getCurrentThrust(altitude) / (isp * 9.81);
+            return getCurrentThrust(altitude, throttle) / (isp * 9.81);
         }
         
         function getAirspeed() {
@@ -601,12 +1150,13 @@
                         thrustDir = prograde;
                 }
             } else {
-                // Normal pitch program
-                const pitchRad = getPitch(state.time) * Math.PI / 180;
-                thrustDir = {
-                    x: Math.sin(pitchRad) * localUp.x + Math.cos(pitchRad) * localEast.x,
-                    y: Math.sin(pitchRad) * localUp.y + Math.cos(pitchRad) * localEast.y
-                };
+                // Closed-loop guidance system
+                const guidance = computeGuidance(state, dt);
+                thrustDir = guidance.thrustDir;
+                // Store guidance phase for telemetry
+                state.guidancePhase = guidance.phase;
+                state.guidancePitch = guidance.pitch;
+                state.guidanceThrottle = guidance.throttle;
             }
             
             // Thrust - enable engine if in burn mode, pitch program complete, and have propellant
@@ -616,7 +1166,9 @@
                 state.engineOn = true;
             }
             
-            const thrust = getCurrentThrust(altitude);
+            // Get throttle from guidance state (or default to 1.0 for burn modes)
+            const throttle = state.guidanceThrottle !== undefined ? state.guidanceThrottle : 1.0;
+            const thrust = getCurrentThrust(altitude, throttle);
             const thrustAccel = thrust / mass;
             const tax = thrustAccel * thrustDir.x;
             const tay = thrustAccel * thrustDir.y;
@@ -653,7 +1205,7 @@
                 const gyStep = -gravityStep * state.y / rStep;
                 
                 // Thrust (recalculate if needed, but typically constant during step)
-                const thrustStep = getCurrentThrust(altitudeStep);
+                const thrustStep = getCurrentThrust(altitudeStep, throttle);
                 const thrustAccelStep = thrustStep / mass;
                 const taxStep = thrustAccelStep * thrustDir.x;
                 const tayStep = thrustAccelStep * thrustDir.y;
@@ -683,7 +1235,7 @@
             
             // Propellant consumption
             if (state.engineOn && state.currentStage < ROCKET_CONFIG.stages.length) {
-                state.propellantRemaining[state.currentStage] -= getMassFlowRate(altitude) * dt;
+                state.propellantRemaining[state.currentStage] -= getMassFlowRate(altitude, throttle) * dt;
                 
                 if (state.propellantRemaining[state.currentStage] <= 0) {
                     state.propellantRemaining[state.currentStage] = 0;
@@ -757,6 +1309,14 @@
                 if (state.trail.length > 10000) state.trail.shift();
             }
             
+            // Gravity turn events
+            if (state.time >= 10.0 && !state.events.some(e => e.text.includes("Gravity turn kick"))) {
+                addEvent("Gravity turn kick");
+            }
+            if (state.time >= 13.0 && !state.events.some(e => e.text.includes("Gravity turn active"))) {
+                addEvent("Gravity turn active - thrusting prograde");
+            }
+            
             if (altitude >= KARMAN_LINE && !state.events.some(e => e.text.includes("Kármán"))) {
                 addEvent("Kármán line - SPACE!");
             }
@@ -799,7 +1359,8 @@
             
             // Stage separation (when stage 0 propellant runs out)
             if (state.currentStage === 0 && state.propellantRemaining[0] > 0 && state.engineOn) {
-                const massFlowRate = getMassFlowRate(altitude);
+                const throttle = state.guidanceThrottle !== undefined ? state.guidanceThrottle : 1.0;
+                const massFlowRate = getMassFlowRate(altitude, throttle);
                 if (massFlowRate > 0) {
                     const timeToSeparation = state.propellantRemaining[0] / massFlowRate;
                     if (timeToSeparation > 0 && timeToSeparation < 10000) {
@@ -818,7 +1379,8 @@
                         // Also need engine to be off, so add time for propellant burn if needed
                         let totalTime = timeToOrbit;
                         if (state.engineOn && state.currentStage < ROCKET_CONFIG.stages.length) {
-                            const massFlowRate = getMassFlowRate(altitude);
+                            const throttle = state.guidanceThrottle !== undefined ? state.guidanceThrottle : 1.0;
+                            const massFlowRate = getMassFlowRate(altitude, throttle);
                             if (massFlowRate > 0 && state.propellantRemaining[state.currentStage] > 0) {
                                 const timeToBurnout = state.propellantRemaining[state.currentStage] / massFlowRate;
                                 totalTime = Math.max(timeToOrbit, timeToBurnout);
@@ -831,7 +1393,8 @@
             
             // SECO (when stage 1 propellant runs out)
             if (state.currentStage === 1 && state.propellantRemaining[1] > 0 && state.engineOn) {
-                const massFlowRate = getMassFlowRate(altitude);
+                const throttle = state.guidanceThrottle !== undefined ? state.guidanceThrottle : 1.0;
+                const massFlowRate = getMassFlowRate(altitude, throttle);
                 if (massFlowRate > 0) {
                     const timeToSECO = state.propellantRemaining[1] / massFlowRate;
                     if (timeToSECO > 0 && timeToSECO < 10000) {
@@ -884,7 +1447,8 @@
             document.getElementById('vvel').textContent = vVert.toFixed(0) + ' m/s';
             document.getElementById('hvel').textContent = vHoriz.toFixed(0) + ' m/s';
             
-            const thrust = getCurrentThrust(altitude);
+            const throttle = state.guidanceThrottle !== undefined ? state.guidanceThrottle : 1.0;
+            const thrust = getCurrentThrust(altitude, throttle);
             const mass = getTotalMass();
             document.getElementById('accel').textContent = (thrust / mass / 9.81).toFixed(2) + ' G';
             document.getElementById('maxq').textContent = (state.maxQ / 1000).toFixed(2) + ' kPa';
@@ -1077,13 +1641,19 @@
             const localEast = { x: localUp.y, y: -localUp.x };
             // Move rocket up by half its length so it sits on top of the pad
             ctx.translate(state.x + localUp.x * rocketLen * 0.5, state.y + localUp.y * rocketLen * 0.5);
-            const pitchRad = getPitch(state.time) * Math.PI / 180;
             
-            // Calculate thrust direction vector
-            const thrustDir = {
-                x: Math.sin(pitchRad) * localUp.x + Math.cos(pitchRad) * localEast.x,
-                y: Math.sin(pitchRad) * localUp.y + Math.cos(pitchRad) * localEast.y
-            };
+            // Calculate thrust direction vector (same logic as physics update)
+            let thrustDir;
+            const pitchProgramComplete = state.time > 600 || (!state.engineOn && getAltitude() > 150000);
+            if (state.burnMode && pitchProgramComplete && getAltitude() > 150000) {
+                // Orbital burn mode
+                const velocity = Math.sqrt(state.vx * state.vx + state.vy * state.vy);
+                thrustDir = velocity > 0 ? { x: state.vx / velocity, y: state.vy / velocity } : { x: localUp.x, y: localUp.y };
+            } else {
+                // Closed-loop guidance system (same as physics update)
+                const guidance = computeGuidance(state, 0.016); // Use typical frame time for rendering
+                thrustDir = guidance.thrustDir;
+            }
             
             // Rocket angle: point rocket nose (at negative Y in drawing coords) in thrust direction
             // Since canvas Y is flipped, negative Y in drawing = positive Y on screen (up)
