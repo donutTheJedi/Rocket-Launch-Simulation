@@ -1,0 +1,200 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: #000;
+    font-family: 'Courier New', monospace;
+    overflow: hidden;
+    display: flex;
+}
+
+#canvas {
+    background: #000;
+}
+
+#telemetry {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    color: #0f0;
+    font-size: 13px;
+    line-height: 1.6;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 15px;
+    border: 1px solid #0f0;
+    border-radius: 5px;
+    min-width: 280px;
+}
+
+#telemetry h3 {
+    color: #0ff;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #0ff;
+    padding-bottom: 5px;
+}
+
+.section {
+    margin: 10px 0;
+    padding: 8px 0;
+    border-bottom: 1px solid #333;
+}
+
+.label {
+    color: #888;
+}
+
+.value {
+    color: #0f0;
+    float: right;
+}
+
+#controls {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    display: flex;
+    gap: 10px;
+}
+
+button {
+    background: #222;
+    color: #0f0;
+    border: 1px solid #0f0;
+    padding: 10px 20px;
+    font-family: 'Courier New', monospace;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+button:hover {
+    background: #0f0;
+    color: #000;
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#events {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    color: #0ff;
+    font-size: 12px;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 15px;
+    border: 1px solid #0ff;
+    border-radius: 5px;
+    max-width: 250px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+#burn-controls {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    color: #0ff;
+    font-size: 12px;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 15px;
+    border: 1px solid #0ff;
+    border-radius: 5px;
+    min-width: 150px;
+}
+
+#burn-controls button {
+    width: 100%;
+    padding: 8px;
+    font-size: 11px;
+}
+
+#burn-controls button.active {
+    background: #0ff;
+    color: #000;
+}
+
+#events h3 {
+    margin-bottom: 10px;
+    border-bottom: 1px solid #0ff;
+    padding-bottom: 5px;
+}
+
+.event {
+    margin: 5px 0;
+    padding: 3px 0;
+    border-bottom: 1px solid #333;
+    font-size: 11px;
+}
+
+.event-time {
+    color: #888;
+}
+
+#pitch-program {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    color: #f80;
+    font-size: 12px;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 15px;
+    border: 1px solid #f80;
+    border-radius: 5px;
+    width: 200px;
+}
+
+#pitch-program h3 {
+    margin-bottom: 10px;
+    border-bottom: 1px solid #f80;
+    padding-bottom: 5px;
+}
+
+.pitch-bar {
+    width: 100%;
+    height: 20px;
+    background: #333;
+    margin-top: 10px;
+    position: relative;
+}
+
+.pitch-indicator {
+    height: 100%;
+    background: linear-gradient(90deg, #f80, #ff0);
+    transition: width 0.1s;
+}
+
+#tminus-display {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #0ff;
+    font-size: 24px;
+    background: rgba(0, 0, 0, 0.8);
+    padding: 15px 30px;
+    border: 2px solid #0ff;
+    border-radius: 5px;
+    text-align: center;
+    display: none;
+    font-weight: bold;
+    z-index: 1000;
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+}
+
+#tminus-display .tminus-time {
+    font-size: 32px;
+    color: #0ff;
+    margin-bottom: 5px;
+}
+
+#tminus-display .tminus-event {
+    font-size: 14px;
+    color: #0f0;
+    text-transform: uppercase;
+}
+
