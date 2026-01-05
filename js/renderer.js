@@ -337,18 +337,56 @@ export function render() {
         ctx.save();
         const rArrow = Math.sqrt(state.x * state.x + state.y * state.y);
         const localUpArrow = { x: state.x / rArrow, y: state.y / rArrow };
+        const localEastArrow = { x: localUpArrow.y, y: -localUpArrow.x };
         ctx.translate(state.x + localUpArrow.x * rocketLen * 0.5, state.y + localUpArrow.y * rocketLen * 0.5);
+        
+        // Calculate actual thrust direction (same logic as rocket orientation)
+        let thrustDirArrow;
+        if (state.burnMode && pitchProgramComplete && currentAltitude > 150000) {
+            // Burning: use burn direction
+            const velocity = Math.sqrt(state.vx * state.vx + state.vy * state.vy);
+            const prograde = velocity > 0 ? { x: state.vx / velocity, y: state.vy / velocity } : { x: localEastArrow.x, y: localEastArrow.y };
+            const radial = localUpArrow;
+            const h = state.x * state.vy - state.y * state.vx;
+            const normal = h > 0 ? { x: -localUpArrow.y, y: localUpArrow.x } : { x: localUpArrow.y, y: -localUpArrow.x };
+            
+            switch (state.burnMode) {
+                case 'prograde':
+                    thrustDirArrow = prograde;
+                    break;
+                case 'retrograde':
+                    thrustDirArrow = { x: -prograde.x, y: -prograde.y };
+                    break;
+                case 'normal':
+                    thrustDirArrow = normal;
+                    break;
+                case 'anti-normal':
+                    thrustDirArrow = { x: -normal.x, y: -normal.y };
+                    break;
+                case 'radial':
+                    thrustDirArrow = radial;
+                    break;
+                case 'anti-radial':
+                    thrustDirArrow = { x: -radial.x, y: -radial.y };
+                    break;
+                default:
+                    thrustDirArrow = prograde;
+            }
+        } else {
+            // Use rocket direction (same as rocket orientation)
+            thrustDirArrow = rocketDir;
+        }
         
         ctx.beginPath();
         ctx.moveTo(0, 0);
-        ctx.lineTo(thrustDir.x * arrowLength, thrustDir.y * arrowLength);
+        ctx.lineTo(thrustDirArrow.x * arrowLength, thrustDirArrow.y * arrowLength);
         ctx.strokeStyle = '#0ff';
         ctx.lineWidth = metersPerPixel * 3;
         ctx.stroke();
         
-        const arrowX = thrustDir.x * arrowLength;
-        const arrowY = thrustDir.y * arrowLength;
-        const arrowAngle = Math.atan2(thrustDir.y, thrustDir.x);
+        const arrowX = thrustDirArrow.x * arrowLength;
+        const arrowY = thrustDirArrow.y * arrowLength;
+        const arrowAngle = Math.atan2(thrustDirArrow.y, thrustDirArrow.x);
         
         const tipX = arrowX;
         const tipY = arrowY;
