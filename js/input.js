@@ -29,6 +29,8 @@ function stopBurn() {
         state.burnStartTime = null;
         state.engineOn = false;
         activeBurnButton = null;
+        // Mark that user has taken manual control - hide burn predictions
+        state.manualBurnPerformed = true;
     }
 }
 

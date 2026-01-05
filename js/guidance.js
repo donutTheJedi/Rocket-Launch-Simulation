@@ -2,7 +2,7 @@ import { G, EARTH_MASS, EARTH_RADIUS, ROCKET_CONFIG, GUIDANCE_CONFIG } from './c
 import { getTotalMass } from './state.js';
 import { getAtmosphericDensity, getAirspeed, getGravity } from './physics.js';
 import { predictOrbit, computeRemainingDeltaV } from './orbital.js';
-import { calculateTimeToApoapsis } from './events.js';
+import { calculateTimeToApoapsis, calculateTimeToPeriapsis } from './events.js';
 
 // Guidance state
 export let guidanceState = {
@@ -275,7 +275,7 @@ export function computeGuidance(state, dt) {
         commandedThrottle = 1.0;
         guidanceState.isRetrograde = false;
         
-        const tolerance = 1000; // 10km
+        const tolerance = 5000; // 5km (as per plan: ±5km)
         
         // ================================================================
         // CALCULATE TARGET FLIGHT PATH ANGLE
@@ -321,10 +321,6 @@ export function computeGuidance(state, dt) {
         // - Scale: +1° per 15km of target above atmosphere
         // - Cap: 50° (maximum for very high orbits)
         //
-        // Examples:
-        //   150km target (80km above atmo): 10 + 80/15 = ~15°
-        //   300km target (230km above atmo): 10 + 230/15 = ~25°
-        //   600km target (530km above atmo): 10 + 530/15 = ~45°
         // ================================================================
         
         const startingFPA = Math.max(10, Math.min(50, 10 + targetAboveAtmo / 50000));
@@ -344,14 +340,9 @@ export function computeGuidance(state, dt) {
         //
         // Smooth scaling:
         // - Base: 1.5 (pitch down early for lowest orbits)
-        // - Scale: -0.1 per 100km of target above atmosphere
+        // - Scale: -0.1 per 300km of target above atmosphere
         // - Floor: 0.5 (stay steep for highest orbits)
         //
-        // Examples:
-        //   150km target (80km above atmo): 1.5 - 0.08 = ~1.4
-        //   300km target (230km above atmo): 1.5 - 0.23 = ~1.3
-        //   500km target (430km above atmo): 1.5 - 0.43 = ~1.1
-        //   800km target (730km above atmo): 1.5 - 0.73 = ~0.8
         // ================================================================
         
         const profileExponent = Math.max(0.5, Math.min(1.5, 1.5 - targetAboveAtmo / 3000000));
@@ -555,7 +546,7 @@ export function computeGuidance(state, dt) {
                 // We need some vertical component to keep climbing
                 correction = Math.min(5, -fpaError * 0.3);
                 debugInfo.reason = `Raising Apo — too shallow, pitching up (FPA: ${flightPathAngle.toFixed(1)}° target: ${targetFlightPathAngle.toFixed(1)}°)`;
-                } else {
+            } else {
                 // On target — follow prograde
                 correction = 0;
                 debugInfo.reason = `Raising Apo — on profile (FPA: ${flightPathAngle.toFixed(1)}° target: ${targetFlightPathAngle.toFixed(1)}°)`;
@@ -579,46 +570,153 @@ export function computeGuidance(state, dt) {
             console.log('CASE 1 - Raising Apo: correction =', correction.toFixed(1), '°, commandedPitch =', commandedPitch.toFixed(1), '°');
         }
         
-        // CASE 2: Apoapsis on target, periapsis low — build periapsis
+        // CASE 2: Apoapsis on target (or above), periapsis low (<100km) — need to raise periapsis
         else if (orbit.periapsis < SAFE_PERIAPSIS) {
-            phase = 'building-periapsis';
+            // Apoapsis is at or above target, but periapsis is dangerously low
+            // Strategy depends on where we are in the orbit:
+            //   - If PAST apoapsis (descending): burn prograde NOW to raise periapsis
+            //   - If BEFORE apoapsis (ascending): coast to apoapsis, then burn prograde there
             
-            // Apoapsis is good (within tolerance)
-            // Follow target FPA which includes prediction bias for periapsis adjustment
-            // Target FPA tells us how horizontal we should be to achieve safe periapsis
-            
-            // Correct toward target FPA
-            // When prediction bias is large, directly target the FPA (more aggressive)
-            let correction = 0;
-            if (Math.abs(predictionBias) > 5) {
-                // Large prediction bias means periapsis is in danger
-                // Directly correct to target FPA (use 100% of error)
-                correction = -fpaError;
-            } else if (fpaError > 3) {
-                // Normal correction
-                correction = -Math.min(10, fpaError * 0.5);
-            } else if (fpaError < -3) {
-                // Too shallow — pitch up slightly
-                correction = Math.min(5, -fpaError * 0.3);
+            // Check if we're past apoapsis (descending toward periapsis)
+            if (!isAscending) {
+                // We're descending — past apoapsis, heading toward periapsis
+                // EMERGENCY: burn prograde at full throttle to raise periapsis above 100km
+                phase = 'emergency-raise-periapsis';
+                commandedPitch = flightPathAngle; // Prograde
+                commandedThrottle = 1.0;
+                
+                console.log('CASE 2a - Emergency Pe raise (descending): Pe =', (orbit.periapsis/1000).toFixed(1), 'km');
+                debugInfo.reason = `EMERGENCY: Descending with Pe=${(orbit.periapsis/1000).toFixed(0)}km — burning prograde`;
+                } else {
+                // We're ascending — coast to apoapsis, then burn prograde there
+                phase = 'coasting-to-raise-periapsis';
+                
+                // Calculate burn time needed to raise periapsis to SAFE_PERIAPSIS
+                const r_apo = EARTH_RADIUS + orbit.apoapsis;
+                const r_peri_current = EARTH_RADIUS + orbit.periapsis;
+                const r_peri_target = EARTH_RADIUS + SAFE_PERIAPSIS;
+                
+                // Current velocity at apoapsis
+                const v_at_apo_current = Math.sqrt(mu * (2/r_apo - 1/orbit.semiMajorAxis));
+                
+                // Required velocity at apoapsis for target periapsis (vis-viva)
+                const a_new = (r_apo + r_peri_target) / 2;
+                const v_at_apo_required = Math.sqrt(mu * (2/r_apo - 1/a_new));
+                
+                const deltaV_needed = Math.max(0, v_at_apo_required - v_at_apo_current);
+                
+                let burnTime = 0;
+                if (state.currentStage < ROCKET_CONFIG.stages.length && deltaV_needed > 0) {
+                    const stage = ROCKET_CONFIG.stages[state.currentStage];
+                    const currentMass = getTotalMass();
+                    const thrust = stage.thrustVac;
+                    if (thrust > 0) {
+                        burnTime = deltaV_needed * currentMass / thrust;
+                    }
+                }
+                
+                // Time to apoapsis
+                let timeToApoapsis = calculateTimeToApoapsis(orbit, state, mu);
+                if (!isFinite(timeToApoapsis) || timeToApoapsis <= 0) {
+                    timeToApoapsis = (orbit.apoapsis - altitude) / Math.max(1, vVertical);
+                }
+                
+                // Symmetric burn: start burnTime/2 before apoapsis
+                const burnStartOffset = burnTime / 2;
+                const shouldBurn = isFinite(timeToApoapsis) && 
+                                  burnTime > 0 && 
+                                  timeToApoapsis <= burnStartOffset;
+                
+                if (shouldBurn) {
+                    phase = 'raising-periapsis-at-apo';
+                    commandedPitch = flightPathAngle; // Prograde
+                    commandedThrottle = 1.0;
+                    
+                    console.log('CASE 2b - Burning at Apo to raise Pe: deltaV =', deltaV_needed.toFixed(1), 'm/s');
+                    debugInfo.reason = `Burning at Apo to raise Pe (${(orbit.periapsis/1000).toFixed(0)}km → ${(SAFE_PERIAPSIS/1000).toFixed(0)}km)`;
+                } else {
+                    commandedThrottle = 0;
+                    commandedPitch = flightPathAngle;
+                    
+                    console.log('CASE 2c - Coasting to Apo: timeToApo =', timeToApoapsis.toFixed(0), 's, burn in', (timeToApoapsis - burnStartOffset).toFixed(0), 's');
+                    debugInfo.reason = `Coasting to Apo (${timeToApoapsis.toFixed(0)}s) to raise Pe`;
+                }
+                
+                debugInfo.deltaV_needed = deltaV_needed;
+                debugInfo.burnTime = burnTime;
             }
-            
-            commandedPitch = Math.max(0, flightPathAngle + correction);
-            commandedThrottle = 1.0;
-            
-            console.log('CASE 2 - Building Pe: correction =', correction.toFixed(1), '°, commandedPitch =', commandedPitch.toFixed(1), '°');
-            
-            debugInfo.reason = `Building Pe (${(orbit.periapsis/1000).toFixed(0)}km → ${(SAFE_PERIAPSIS/1000).toFixed(0)}km, FPA: ${flightPathAngle.toFixed(1)}° target: ${targetFlightPathAngle.toFixed(1)}°)`;
         }
         
-        // CASE 3: Apoapsis TOO HIGH — need to lower it
+        // CASE 3: Apoapsis TOO HIGH — need to lower it with retrograde burn at periapsis
         else if (apoapsisError > tolerance) {
-            phase = 'apoapsis-too-high';
+            // Periapsis is safe (>=100km), apoapsis is too high
+            // Strategy: coast to periapsis, then burn retrograde to lower apoapsis
             
-            // Periapsis is safe (>100km), so we can coast
-            commandedThrottle = 0;
-            commandedPitch = flightPathAngle;
+            // Calculate retrograde burn needed to lower apoapsis to target
+            const r_peri = EARTH_RADIUS + orbit.periapsis;
+            const r_apo_current = EARTH_RADIUS + orbit.apoapsis;
+            const r_apo_target = EARTH_RADIUS + TARGET;
             
-            debugInfo.reason = `Apo too high — coasting for retrograde`;
+            // Current velocity at periapsis
+            const v_at_peri_current = Math.sqrt(mu * (2/r_peri - 1/orbit.semiMajorAxis));
+            
+            // Required velocity at periapsis for target apoapsis (vis-viva)
+            const a_new = (r_peri + r_apo_target) / 2;
+            const v_at_peri_required = Math.sqrt(mu * (2/r_peri - 1/a_new));
+            
+            // Retrograde burn = we need to SLOW DOWN
+            const deltaV_needed = Math.max(0, v_at_peri_current - v_at_peri_required);
+            
+            let burnTime = 0;
+            if (state.currentStage < ROCKET_CONFIG.stages.length && deltaV_needed > 0) {
+                const stage = ROCKET_CONFIG.stages[state.currentStage];
+                const currentMass = getTotalMass();
+                const thrust = stage.thrustVac;
+                if (thrust > 0) {
+                    burnTime = deltaV_needed * currentMass / thrust;
+                }
+            }
+            
+            // Time to periapsis
+            let timeToPeriapsis = calculateTimeToPeriapsis(orbit, state, mu);
+            if (!isFinite(timeToPeriapsis) || timeToPeriapsis <= 0) {
+                // Fallback: if descending, estimate time to periapsis
+                if (!isAscending && orbit.periapsis < altitude) {
+                    timeToPeriapsis = (altitude - orbit.periapsis) / Math.max(1, -vVertical);
+                } else {
+                    timeToPeriapsis = Infinity;
+                }
+            }
+            
+            // Symmetric burn: start burnTime/2 before periapsis
+            const burnStartOffset = burnTime / 2;
+            const shouldBurn = isFinite(timeToPeriapsis) && 
+                              burnTime > 0 && 
+                              timeToPeriapsis <= burnStartOffset;
+            
+            if (shouldBurn) {
+                phase = 'retrograde-at-periapsis';
+                // Retrograde = opposite of prograde = flightPathAngle + 180
+                // But since we're burning to slow down, we point opposite to velocity
+                commandedPitch = flightPathAngle + 180;
+                if (commandedPitch > 180) commandedPitch -= 360;
+                commandedThrottle = 1.0;
+                
+                console.log('CASE 3a - Retrograde at Pe: deltaV =', deltaV_needed.toFixed(1), 'm/s, lowering Apo by', (apoapsisError/1000).toFixed(0), 'km');
+                debugInfo.reason = `Retrograde at Pe — lowering Apo (${(orbit.apoapsis/1000).toFixed(0)}km → ${(TARGET/1000).toFixed(0)}km)`;
+                debugInfo.isRetrograde = true;
+            } else {
+                phase = 'coasting-to-periapsis';
+                commandedThrottle = 0;
+                commandedPitch = flightPathAngle;
+                
+                console.log('CASE 3b - Coasting to Pe: timeToPeri =', timeToPeriapsis.toFixed(0), 's, burn in', (timeToPeriapsis - burnStartOffset).toFixed(0), 's');
+                debugInfo.reason = `Coasting to Pe (${timeToPeriapsis.toFixed(0)}s) for retrograde burn`;
+            }
+            
+            debugInfo.deltaV_needed = deltaV_needed;
+            debugInfo.burnTime = burnTime;
+            debugInfo.apoapsisError = apoapsisError;
         }
         
         // CASE 4: Both good but periapsis below target — circularize
@@ -680,8 +778,8 @@ export function computeGuidance(state, dt) {
                 } else {
                     if (periDeficit < 30000) {
                         commandedThrottle = Math.max(0.1, periDeficit / 30000);
-                    } else {
-                        commandedThrottle = 1.0;
+                } else {
+                    commandedThrottle = 1.0;
                     }
                 }
                 

@@ -108,7 +108,7 @@ export function calculateTimeToApoapsis(orbit, state, mu) {
  * @param {number} mu - Standard gravitational parameter (m³/s²)
  * @returns {number} Time to periapsis (s), or Infinity if unreachable
  */
-function calculateTimeToPeriapsis(orbit, state, mu) {
+export function calculateTimeToPeriapsis(orbit, state, mu) {
     if (orbit.isEscape || orbit.eccentricity >= 1 || orbit.semiMajorAxis <= 0) {
         return Infinity;
     }
@@ -339,7 +339,7 @@ export function calculateBurnEvents() {
     // TRADITIONAL STRATEGY: Circularization burn at apoapsis
     // ========================================================================
     // Only predict circularization if more than 25 minutes have passed
-    if (!useDirectAscent && state.time >= 1500 && periError < -tolerance && apoError >= -tolerance) {
+    if (!useDirectAscent && state.time >= 500 && periError < -tolerance && apoError >= -tolerance) {
         const r = Math.sqrt(state.x * state.x + state.y * state.y);
         const altitudeToApoapsis = orbit.apoapsis - altitude;
         
@@ -598,8 +598,11 @@ export function getNextEvent() {
     }
     
     // Add burn events (circularization and retrograde)
-    const burnEvents = calculateBurnEvents();
-    events.push(...burnEvents);
+    // Skip burn predictions if user has performed a manual burn
+    if (!state.manualBurnPerformed) {
+        const burnEvents = calculateBurnEvents();
+        events.push(...burnEvents);
+    }
     
     // Return the event with the shortest time
     if (events.length > 0) {

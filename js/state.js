@@ -23,6 +23,7 @@ export const state = {
     cameraMode: 'rocket', // 'rocket' or 'earth'
     burnMode: null, // null, 'prograde', 'retrograde', 'normal', 'anti-normal', 'radial', 'anti-radial'
     burnStartTime: null, // Time when current burn started
+    manualBurnPerformed: false, // Set to true after user performs any manual burn
     guidancePhase: 'pre-launch',
     guidancePitch: 90.0,
     guidanceThrottle: 1.0
@@ -61,6 +62,7 @@ export function initState() {
     state.cameraMode = 'rocket';
     state.burnMode = null;
     state.burnStartTime = null;
+    state.manualBurnPerformed = false;
     state.guidancePhase = 'pre-launch';
     state.guidancePitch = 90.0;
     state.guidanceThrottle = 1.0;
