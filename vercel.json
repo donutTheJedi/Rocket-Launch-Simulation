@@ -1,0 +1,13 @@
+{
+  "rewrites": [
+    {
+      "source": "/Portfolio",
+      "destination": "/portfolio/index.html"
+    },
+    {
+      "source": "/Portfolio/:path*",
+      "destination": "/portfolio/:path*"
+    }
+  ]
+}
+

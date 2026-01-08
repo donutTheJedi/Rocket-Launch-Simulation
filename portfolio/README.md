@@ -1,13 +1,8 @@
 # 🚀 Orbital Rocket Simulation
 
-**Current Version:** [View Current Version](https://github.com/donutTheJedi/Rocket)  
-**Version for Portfolio:** [View Portfolio Version](https://github.com/donutTheJedi/Rocket/tree/0e043fd6ae89f26681f5d3c4ad71d70b87517799)
-
 A realistic 2D physics simulation of orbital mechanics and rocket launches from Earth. Experience the challenge of launching a Falcon 9-like rocket into orbit with accurate physics, atmospheric modeling, and an intelligent closed-loop guidance system.
 
-**🌐 Live Demo:**  
-**Current Live Demo:** [https://www.donutthejedi.com/](https://www.donutthejedi.com/)  
-**Live Demo (Portfolio Version):** [https://www.donutthejedi.com/Portfolio](https://www.donutthejedi.com/Portfolio)
+**🌐 Live Demo: [https://www.donutthejedi.com/](https://www.donutthejedi.com/)**
 
 ![Rocket Simulation](https://img.shields.io/badge/Status-Active-success)
 ![License](https://img.shields.io/badge/License-MIT-blue)
