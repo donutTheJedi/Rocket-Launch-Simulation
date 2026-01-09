@@ -75,8 +75,9 @@ export function render() {
         ctx.translate(-state.x, -state.y);
     }
     
-    // Rotate Earth so launch site stays under rocket
-    const earthRotation = Math.atan2(state.x, state.y);
+    // Rotate Earth at actual Earth rotation rate (~465 m/s at surface)
+    const EARTH_ROTATION_RATE = 2 * Math.PI / 86400; // rad/s (one rotation per 24 hours)
+    const earthRotation = state.time * EARTH_ROTATION_RATE;
     ctx.save();
     ctx.rotate(-earthRotation);
     
