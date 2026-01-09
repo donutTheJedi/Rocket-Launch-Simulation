@@ -15,6 +15,40 @@ body {
     background: #000;
 }
 
+#github-link {
+    position: fixed;
+    top: 20px;
+    right: 180px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.7);
+    border: 1px solid #0f0;
+    border-radius: 5px;
+    color: #0f0;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    z-index: 1000;
+}
+
+#github-link:hover {
+    background: rgba(0, 255, 0, 0.1);
+    border-color: #0ff;
+    color: #0ff;
+    transform: scale(1.1);
+}
+
+#github-link:active {
+    transform: scale(0.95);
+}
+
+#github-link svg {
+    width: 20px;
+    height: 20px;
+}
+
 #telemetry {
     position: fixed;
     top: 20px;
