@@ -259,10 +259,10 @@ export function initInput() {
             const cappedDt = Math.min(dt, 0.1);
             const pitchRate = GUIDANCE_CONFIG.maxPitchRate;
             if (pitchUpHeld) {
-                state.manualPitch = Math.min(90, state.manualPitch + pitchRate * cappedDt);
+                state.manualPitch = state.manualPitch + pitchRate * cappedDt;
             }
             if (pitchDownHeld) {
-                state.manualPitch = Math.max(-5, state.manualPitch - pitchRate * cappedDt);
+                state.manualPitch = state.manualPitch - pitchRate * cappedDt;
             }
         }
     };

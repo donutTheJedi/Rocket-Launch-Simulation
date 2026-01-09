@@ -2,12 +2,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Orbital Rocket Simulation</title>
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
     <canvas id="canvas"></canvas>
+    
+    <button id="mobile-menu-toggle" class="mobile-hamburger" aria-label="Toggle menu">
+        <span></span>
+        <span></span>
+        <span></span>
+    </button>
     
     <a href="https://github.com/donutTheJedi" target="_blank" rel="noopener noreferrer" id="github-link" title="View GitHub Profile">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -71,14 +77,18 @@
     
     <div id="controls">
         <button id="menu-btn">MENU</button>
-        <button id="launch-btn">LAUNCH</button>
-        <button id="pause-btn" style="display: none;">PAUSE</button>
         <button id="reset-btn">RESET</button>
-        <button id="speed-btn">1x</button>
         <button id="zoom-out-btn">ZOOM OUT</button>
         <button id="zoom-in-btn">ZOOM IN</button>
         <button id="zoom-auto-btn">AUTO ZOOM</button>
         <button id="camera-btn">FOLLOW ROCKET</button>
+    </div>
+    
+    <!-- Quick action buttons (launch, pause, speed) - bottom right -->
+    <div id="quick-actions">
+        <button id="speed-btn">1x</button>
+        <button id="launch-btn">LAUNCH</button>
+        <button id="pause-btn" style="display: none;">PAUSE</button>
     </div>
     
     <div id="menu-panel" style="display: none;">
@@ -119,6 +129,13 @@
     </div>
     
     <div id="menu-overlay" style="display: none;"></div>
+    
+    <!-- Mobile UI Panel (slides in from left) -->
+    <div id="mobile-ui-panel" class="mobile-ui-panel">
+        <div id="mobile-controls-container"></div>
+        <div id="mobile-github-container"></div>
+        <div id="mobile-pitch-container"></div>
+    </div>
     
     <div id="manual-pitch-controls" style="display: none;">
         <h3>MANUAL PITCH CONTROL</h3>

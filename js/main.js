@@ -381,6 +381,13 @@ function hideMenu() {
         setTimeout(() => {
             menuPanel.style.display = 'none';
             menuOverlay.style.display = 'none';
+            
+            // If no mission mode is selected, default to guided mode
+            if (state.gameMode === null || state.gameMode === undefined) {
+                const input = document.getElementById('target-altitude-input');
+                const targetAlt = input ? parseFloat(input.value) * 1000 : 500000;
+                startMission('guided', { targetAltitude: targetAlt });
+            }
         }, 300);
     }
 }
@@ -430,12 +437,29 @@ function updateUIForMode() {
     const launchBtn = document.getElementById('launch-btn');
     const manualControls = document.getElementById('manual-pitch-controls');
     const pitchProgram = document.getElementById('pitch-program');
+    const isMobile = window.innerWidth <= 768;
     
     if (state.gameMode === 'manual') {
-        if (manualControls) manualControls.style.display = 'block';
+        if (manualControls) {
+            manualControls.style.display = 'block';
+            // On mobile, position in bottom right (outside hamburger menu)
+            if (isMobile) {
+                manualControls.classList.add('mobile-bottom-right');
+                // Make sure it's not in the mobile panel - move to body if it's in any container
+                const mobilePanel = document.getElementById('mobile-ui-panel');
+                if (mobilePanel && mobilePanel.contains(manualControls)) {
+                    document.body.appendChild(manualControls);
+                }
+            } else {
+                manualControls.classList.remove('mobile-bottom-right');
+            }
+        }
         if (pitchProgram) pitchProgram.style.display = 'none';
     } else {
-        if (manualControls) manualControls.style.display = 'none';
+        if (manualControls) {
+            manualControls.style.display = 'none';
+            manualControls.classList.remove('mobile-bottom-right');
+        }
         if (pitchProgram && state.gameMode !== 'orbital') {
             pitchProgram.style.display = 'block';
         } else if (pitchProgram) {
@@ -455,6 +479,54 @@ function updateUIForMode() {
 
 // Export for use in input.js
 window.updateUIForMode = updateUIForMode;
+
+// Update GitHub logo position based on events panel width
+function updateGithubLinkPosition() {
+    const eventsPanel = document.getElementById('events');
+    const githubLink = document.getElementById('github-link');
+    
+    if (!eventsPanel || !githubLink) return;
+    
+    const eventsRect = eventsPanel.getBoundingClientRect();
+    const buffer = 10; // 10px buffer
+    
+    // Get the right position of the events panel
+    const eventsRight = window.innerWidth - eventsRect.right;
+    
+    // Position GitHub link to the left of events panel with buffer
+    githubLink.style.right = `${eventsRight + eventsRect.width + buffer}px`;
+}
+
+// Initialize GitHub link positioning
+function initGithubLinkPosition() {
+    const eventsPanel = document.getElementById('events');
+    const githubLink = document.getElementById('github-link');
+    
+    if (!eventsPanel || !githubLink) return;
+    
+    // Update position initially (use requestAnimationFrame to ensure DOM is ready)
+    requestAnimationFrame(() => {
+        updateGithubLinkPosition();
+    });
+    
+    // Watch for changes to events panel size
+    if (window.ResizeObserver) {
+        const resizeObserver = new ResizeObserver(() => {
+            // Use requestAnimationFrame to batch updates
+            requestAnimationFrame(() => {
+                updateGithubLinkPosition();
+            });
+        });
+        resizeObserver.observe(eventsPanel);
+    }
+    
+    // Also update on window resize
+    window.addEventListener('resize', () => {
+        requestAnimationFrame(() => {
+            updateGithubLinkPosition();
+        });
+    });
+}
 
 // Initialize menu event handlers
 function initMenu() {
@@ -508,6 +580,105 @@ function initMenu() {
     });
 }
 
+// Initialize mobile UI panel
+function initMobileUI() {
+    const hamburger = document.getElementById('mobile-menu-toggle');
+    const mobilePanel = document.getElementById('mobile-ui-panel');
+    const controls = document.getElementById('controls');
+    const quickActions = document.getElementById('quick-actions');
+    const githubLink = document.getElementById('github-link');
+    const pitchProgram = document.getElementById('pitch-program');
+    const manualPitchControls = document.getElementById('manual-pitch-controls');
+    const burnControls = document.getElementById('burn-controls');
+    
+    const controlsContainer = document.getElementById('mobile-controls-container');
+    const githubContainer = document.getElementById('mobile-github-container');
+    const pitchContainer = document.getElementById('mobile-pitch-container');
+    
+    if (!hamburger || !mobilePanel) return;
+    
+    function isMobile() {
+        return window.innerWidth <= 768;
+    }
+    
+    function movePanelsToMobile() {
+        if (!isMobile()) return;
+        
+        if (controls && controlsContainer && !controlsContainer.contains(controls)) {
+            controlsContainer.appendChild(controls);
+        }
+        if (githubLink && githubContainer && !githubContainer.contains(githubLink)) {
+            githubContainer.appendChild(githubLink);
+        }
+        if (pitchProgram && pitchContainer && !pitchContainer.contains(pitchProgram)) {
+            pitchContainer.appendChild(pitchProgram);
+        }
+        // Manual pitch controls: only move to mobile panel if NOT in manual mode
+        // In manual mode, they stay in body and are positioned in bottom right
+        if (manualPitchControls && state.gameMode !== 'manual' && pitchContainer && !pitchContainer.contains(manualPitchControls)) {
+            pitchContainer.appendChild(manualPitchControls);
+        }
+        // Burn controls stay in body, not moved to mobile panel
+    }
+    
+    function movePanelsBack() {
+        if (isMobile()) return;
+        
+        const body = document.body;
+        if (controls && !body.contains(controls)) {
+            body.appendChild(controls);
+        }
+        if (githubLink && !body.contains(githubLink)) {
+            body.appendChild(githubLink);
+        }
+        if (pitchProgram && !body.contains(pitchProgram)) {
+            body.appendChild(pitchProgram);
+        }
+        if (manualPitchControls && !body.contains(manualPitchControls)) {
+            body.appendChild(manualPitchControls);
+        }
+        // Burn controls stay in body
+    }
+    
+    // Toggle mobile panel
+    function toggleMobilePanel() {
+        hamburger.classList.toggle('active');
+        mobilePanel.classList.toggle('show');
+    }
+    
+    // Close mobile panel when clicking outside
+    function closeMobilePanel(e) {
+        if (mobilePanel.classList.contains('show') && 
+            !mobilePanel.contains(e.target) && 
+            !hamburger.contains(e.target)) {
+            hamburger.classList.remove('active');
+            mobilePanel.classList.remove('show');
+        }
+    }
+    
+    hamburger.addEventListener('click', toggleMobilePanel);
+    document.addEventListener('click', closeMobilePanel);
+    
+    // Move panels on init and resize
+    if (isMobile()) {
+        movePanelsToMobile();
+    } else {
+        movePanelsBack();
+    }
+    
+    window.addEventListener('resize', () => {
+        if (isMobile()) {
+            movePanelsToMobile();
+        } else {
+            movePanelsBack();
+        }
+        // Update UI positioning when switching between mobile/desktop
+        if (typeof updateUIForMode === 'function') {
+            updateUIForMode();
+        }
+    });
+}
+
 // Initialize application
 function init() {
     const canvas = document.getElementById('canvas');
@@ -517,6 +688,8 @@ function init() {
     resetGuidance();
     initInput();
     initMenu();
+    initGithubLinkPosition();
+    initMobileUI();
     showMenu(); // Show menu on startup
     updateTelemetry();
     requestAnimationFrame(loop);

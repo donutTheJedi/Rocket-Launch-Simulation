@@ -2,6 +2,7 @@ import { EARTH_RADIUS, ROCKET_CONFIG, KARMAN_LINE } from './constants.js';
 import { state, getAltitude, getTotalMass, getPitch } from './state.js';
 import { getAtmosphericDensity, getCurrentThrust, getAirspeed, getCurrentDragCoefficient } from './physics.js';
 import { formatTime, formatTMinus, getNextEvent } from './events.js';
+import { predictOrbit } from './orbital.js';
 
 // Update all telemetry displays
 export function updateTelemetry() {
@@ -85,7 +86,22 @@ export function updateTelemetry() {
     const pitch = getPitch(state.time);
     document.getElementById('pitch').textContent = pitch.toFixed(1) + '°';
     
+    // Check if fuel is available (used for mobile manual mode positioning)
+    let hasFuel = false;
+    if (state.currentStage < ROCKET_CONFIG.stages.length) {
+        // Check current stage and future stages for remaining propellant
+        for (let i = state.currentStage; i < ROCKET_CONFIG.stages.length; i++) {
+            if (state.propellantRemaining[i] > 0) {
+                hasFuel = true;
+                break;
+            }
+        }
+    }
+    
     // Update pitch display based on mode
+    const isMobile = window.innerWidth <= 768;
+    const manualPitchControls = document.getElementById('manual-pitch-controls');
+    
     if (state.gameMode === 'manual') {
         // Show manual pitch and guidance recommendation
         const manualPitchDisplay = document.getElementById('manual-pitch-display');
@@ -106,6 +122,28 @@ export function updateTelemetry() {
         // Hide normal pitch program display
         const pitchProgram = document.getElementById('pitch-program');
         if (pitchProgram) pitchProgram.style.display = 'none';
+        
+        // Handle mobile positioning: show in bottom right when fuel available, hide when fuel runs out
+        if (isMobile && manualPitchControls) {
+            if (hasFuel) {
+                // Show manual pitch controls in bottom right on mobile when fuel available
+                manualPitchControls.style.display = 'block';
+                manualPitchControls.classList.add('mobile-bottom-right');
+                // Make sure it's not in the mobile panel - move to body if it's in any container
+                const mobilePanel = document.getElementById('mobile-ui-panel');
+                if (mobilePanel && mobilePanel.contains(manualPitchControls)) {
+                    document.body.appendChild(manualPitchControls);
+                }
+            } else {
+                // Hide manual pitch controls when fuel runs out
+                manualPitchControls.style.display = 'none';
+                manualPitchControls.classList.remove('mobile-bottom-right');
+            }
+        } else if (!isMobile && manualPitchControls) {
+            // Desktop: show normally (not in bottom right)
+            manualPitchControls.style.display = 'block';
+            manualPitchControls.classList.remove('mobile-bottom-right');
+        }
     } else {
         // Show normal pitch program
         document.getElementById('target-pitch').textContent = pitch.toFixed(1) + '°';
@@ -114,6 +152,11 @@ export function updateTelemetry() {
         
         const pitchProgram = document.getElementById('pitch-program');
         if (pitchProgram) pitchProgram.style.display = 'block';
+        
+        // On mobile, manual pitch controls should not be in bottom right when not in manual mode
+        if (isMobile && manualPitchControls) {
+            manualPitchControls.classList.remove('mobile-bottom-right');
+        }
     }
     
     document.getElementById('apoapsis').textContent = state.apoapsis === Infinity ? 'ESCAPE' : (state.apoapsis / 1000).toFixed(1) + ' km';
@@ -133,23 +176,81 @@ export function updateTelemetry() {
     }
     
     // Show/hide burn controls when in orbit and pitch program is complete
-    // In orbital mode, always show burn controls if we have propellant
+    // In orbital mode, always show burn controls
     const pitchProgramComplete = state.gameMode === 'orbital' || state.time > 600 || (!state.engineOn && altitude > 150000);
-    const inOrbit = altitude > 150000 && state.currentStage < ROCKET_CONFIG.stages.length && pitchProgramComplete;
     const burnControls = document.getElementById('burn-controls');
     
-    // Show burn controls in orbital mode (if we have propellant) or when in orbit
+    if (!burnControls) return; // Safety check
+    
+    // Check if we're in orbit using orbital mechanics
+    let inOrbit = false;
+    if (altitude > 150000 && pitchProgramComplete) {
+        try {
+            const orbit = predictOrbit(state);
+            // Consider in orbit if periapsis is above atmosphere (above 150km) and not escaping
+            inOrbit = orbit && orbit.periapsis > 150000 && !orbit.isEscape;
+        } catch (e) {
+            // Fallback: if orbital prediction fails, use simple altitude check
+            inOrbit = altitude > 150000 && !state.engineOn;
+        }
+    }
+    
+    // Update quick actions and controls positioning based on burn controls visibility
+    const quickActions = document.getElementById('quick-actions');
+    const controlsPanel = document.getElementById('controls');
+    const wasVisible = burnControls.style.display === 'block';
+    
+    // Show burn controls in orbital mode or when in orbit
+    // On mobile in manual mode: show in bottom right when fuel runs out (replacing manual pitch controls)
     if (state.gameMode === 'orbital') {
-        // In orbital mode, show controls if we have a stage with propellant
-        if (burnControls && state.currentStage < ROCKET_CONFIG.stages.length) {
-            burnControls.style.display = 'block';
-        } else if (burnControls) {
-            burnControls.style.display = 'none';
+        // In orbital mode, always show controls directly on the left
+        burnControls.style.display = 'block';
+        burnControls.classList.add('in-orbit');
+        if (isMobile) {
+            burnControls.classList.remove('mobile-bottom-right');
+        }
+        if (quickActions) {
+            quickActions.classList.remove('burn-controls-visible');
+            quickActions.classList.add('burn-controls-in-orbit');
+        }
+        if (controlsPanel) {
+            controlsPanel.classList.add('burn-controls-in-orbit');
         }
     } else if (inOrbit) {
-        if (burnControls) burnControls.style.display = 'block';
+        // Show controls when we've achieved orbit
+        burnControls.style.display = 'block';
+        burnControls.classList.add('in-orbit');
+        
+        // On mobile in manual mode: position in bottom right when fuel is out (replacing manual pitch)
+        if (isMobile && state.gameMode === 'manual' && !hasFuel) {
+            burnControls.classList.add('mobile-bottom-right');
+        } else if (isMobile) {
+            burnControls.classList.remove('mobile-bottom-right');
+        }
+        
+        if (quickActions) {
+            quickActions.classList.remove('burn-controls-visible');
+            quickActions.classList.add('burn-controls-in-orbit');
+        }
+        if (controlsPanel) {
+            controlsPanel.classList.add('burn-controls-in-orbit');
+        }
     } else {
-        if (burnControls) burnControls.style.display = 'none';
+        // Hide controls if not in orbit (unless in manual mode on mobile with no fuel - wait for orbit)
+        if (isMobile && state.gameMode === 'manual' && !hasFuel) {
+            // Keep hidden until orbit is achieved
+            burnControls.style.display = 'none';
+        } else {
+            burnControls.style.display = 'none';
+        }
+        burnControls.classList.remove('in-orbit', 'mobile-bottom-right');
+        // Quick actions and controls return to default position
+        if (quickActions) {
+            quickActions.classList.remove('burn-controls-visible', 'burn-controls-in-orbit');
+        }
+        if (controlsPanel) {
+            controlsPanel.classList.remove('burn-controls-in-orbit');
+        }
         // Clear burn mode if not in orbit or pitch program still running
         if (state.burnMode) {
             state.burnMode = null;
