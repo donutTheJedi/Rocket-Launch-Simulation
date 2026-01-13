@@ -1,13 +1,15 @@
 # 🚀 Orbital Rocket Simulation
 
+
+
 **Current Version:** [View Current Version](https://github.com/donutTheJedi/Rocket)  
-**Version for Portfolio(Commits up to Jan 5th):** [View Portfolio Version](https://github.com/donutTheJedi/Rocket/tree/0e043fd6ae89f26681f5d3c4ad71d70b87517799)
+
+[![Hacker News](https://img.shields.io/badge/Hacker%20News-Front%20Page-orange?logo=ycombinator)](https://news.ycombinator.com/item?id=46557879)
 
 A realistic 2D physics simulation of orbital mechanics and rocket launches from Earth. Experience the challenge of launching a Falcon 9-like rocket into orbit with accurate physics, atmospheric modeling, and an intelligent closed-loop guidance system.
 
 **🌐 Live Demo:**  
 **Current Live Demo:** [https://www.donutthejedi.com/](https://www.donutthejedi.com/)  
-**Live Demo (Portfolio Version Jan 5th):** [https://www.donutthejedi.com/Portfolio](https://www.donutthejedi.com/Portfolio)
 
 ![Rocket Simulation](https://img.shields.io/badge/Status-Active-success)
 ![License](https://img.shields.io/badge/License-MIT-blue)
@@ -380,6 +382,10 @@ Add real-time plotting during flight and comprehensive post-flight analysis.
 - [ ] Propellant usage timeline
 - [ ] Export flight data to CSV/JSON
 - [ ] Replay flight with adjustable playback speed
+
+## ⚠️ Current Issues
+
+- **Gimbal/COG Thrust Issue**: Gimbaling and COG calculations are working correctly, but the rocket doesn't have enough thrust and is falling out of the sky around 0.75km. This appears to be related to how thrust is being applied with the new gimbal mechanics.
 
 ## 🐛 Known Limitations
 
