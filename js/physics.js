@@ -452,3 +452,620 @@ export function getCurrentDragCoefficient(altitude, airspeed) {
     };
 }
 
+/**
+ * ============================================================================
+ * CENTER OF GRAVITY (COG) CALCULATIONS
+ * ============================================================================
+ * 
+ * Dynamically calculates the rocket's center of gravity based on:
+ * - Current fuel levels in each stage
+ * - Fuel distribution within cylindrical tanks
+ * - Mass distribution of dry components (engines, structure, payload)
+ * 
+ * The rocket is modeled as stacked cylindrical sections from bottom to top:
+ * - Stage 1: Engines at bottom, propellant tank above
+ * - Stage 2: Mounted on Stage 1, similar configuration
+ * - Payload: On top of Stage 2
+ * - Fairing: Covers payload (until jettisoned)
+ * 
+ * COG is measured from the bottom of the rocket (engine bells)
+ */
+
+/**
+ * Calculate current fuel level (height) in a stage's tank
+ * Models the tank as a perfect cylinder
+ * 
+ * @param {number} stageIndex - Index of the stage (0 or 1)
+ * @returns {Object} { fuelHeight, tankHeight, fillFraction }
+ */
+export function calculateFuelLevel(stageIndex) {
+    const stage = ROCKET_CONFIG.stages[stageIndex];
+    const propellantRemaining = state.propellantRemaining[stageIndex];
+    
+    // Tank dimensions (cylinder)
+    const tankRadius = stage.diameter / 2;
+    const tankCrossSection = Math.PI * tankRadius * tankRadius;  // m²
+    const tankHeight = stage.length * stage.tankLengthRatio;     // m
+    
+    // Calculate initial fuel volume from density
+    const initialFuelVolume = stage.propellantMass / ROCKET_CONFIG.propellantDensity;  // m³
+    
+    // Current fuel volume
+    const currentFuelVolume = propellantRemaining / ROCKET_CONFIG.propellantDensity;  // m³
+    
+    // Current fuel height in tank (fuel fills from bottom)
+    const fuelHeight = currentFuelVolume / tankCrossSection;  // m
+    
+    // Fill fraction (0 to 1)
+    const fillFraction = propellantRemaining / stage.propellantMass;
+    
+    return {
+        fuelHeight: Math.min(fuelHeight, tankHeight),  // Can't exceed tank height
+        tankHeight,
+        fillFraction,
+        tankCrossSection,
+        currentFuelVolume,
+        initialFuelVolume
+    };
+}
+
+/**
+ * Calculate COG of a single stage relative to its bottom
+ * 
+ * Stage layout (from bottom):
+ * - Engine section: 0 to engineLength
+ * - Tank section: engineLength to (engineLength + tankHeight)
+ * - Upper structure: remaining length
+ * 
+ * @param {number} stageIndex - Index of the stage (0 or 1)
+ * @returns {Object} { stageCOG, totalMass, fuelMass, dryMass }
+ */
+export function calculateStageCOG(stageIndex) {
+    const stage = ROCKET_CONFIG.stages[stageIndex];
+    const propellantRemaining = state.propellantRemaining[stageIndex];
+    
+    // Get fuel level info
+    const fuelInfo = calculateFuelLevel(stageIndex);
+    
+    // Stage geometry
+    const engineLength = stage.engineLength;
+    const tankHeight = fuelInfo.tankHeight;
+    const tankBottom = engineLength;  // Tank starts above engine section
+    
+    // Dry mass distribution
+    const engineMass = stage.dryMass * stage.dryMassEngineFraction;
+    const structureMass = stage.dryMass * (1 - stage.dryMassEngineFraction);
+    
+    // COG positions (from stage bottom)
+    const engineCOG = engineLength / 2;  // Engine COG at center of engine section
+    const structureCOG = stage.length / 2;  // Structure distributed along stage
+    
+    // Fuel COG: center of current fuel column (from stage bottom)
+    // Fuel fills from tank bottom upward
+    const fuelCOG = tankBottom + (fuelInfo.fuelHeight / 2);
+    
+    // Calculate weighted COG
+    const totalMass = stage.dryMass + propellantRemaining;
+    
+    if (totalMass === 0) {
+        return { stageCOG: stage.length / 2, totalMass: 0, fuelMass: 0, dryMass: 0 };
+    }
+    
+    const momentSum = (engineMass * engineCOG) + 
+                      (structureMass * structureCOG) + 
+                      (propellantRemaining * fuelCOG);
+    
+    const stageCOG = momentSum / totalMass;
+    
+    return {
+        stageCOG,
+        totalMass,
+        fuelMass: propellantRemaining,
+        dryMass: stage.dryMass,
+        fuelHeight: fuelInfo.fuelHeight,
+        fillFraction: fuelInfo.fillFraction
+    };
+}
+
+/**
+ * Calculate the overall rocket COG from the bottom of the rocket
+ * 
+ * Rocket stack (from bottom):
+ * - Stage 1: 0 to stage1.length (if not jettisoned)
+ * - Stage 2: stage1.length to (stage1.length + stage2.length)
+ * - Payload: top of Stage 2 to (top + payload.length)
+ * - Fairing: on top (if not jettisoned)
+ * 
+ * @returns {Object} Complete COG analysis
+ */
+export function calculateRocketCOG() {
+    const stages = ROCKET_CONFIG.stages;
+    const payload = ROCKET_CONFIG.payload;
+    const fairing = ROCKET_CONFIG.fairing;
+    
+    let totalMass = 0;
+    let momentSum = 0;
+    let currentBottom = 0;  // Tracks bottom position of each component
+    
+    const components = [];
+    
+    // Stage 1 (if current stage is 0)
+    if (state.currentStage === 0) {
+        const stage1COG = calculateStageCOG(0);
+        const stage1Position = currentBottom + stage1COG.stageCOG;
+        
+        totalMass += stage1COG.totalMass;
+        momentSum += stage1COG.totalMass * stage1Position;
+        
+        components.push({
+            name: 'Stage 1',
+            mass: stage1COG.totalMass,
+            position: stage1Position,
+            fuelFraction: stage1COG.fillFraction,
+            bottom: currentBottom,
+            length: stages[0].length
+        });
+        
+        currentBottom += stages[0].length;
+    }
+    
+    // Stage 2 (if current stage is 0 or 1)
+    if (state.currentStage <= 1) {
+        const stage2COG = calculateStageCOG(1);
+        const stage2Position = currentBottom + stage2COG.stageCOG;
+        
+        totalMass += stage2COG.totalMass;
+        momentSum += stage2COG.totalMass * stage2Position;
+        
+        components.push({
+            name: 'Stage 2',
+            mass: stage2COG.totalMass,
+            position: stage2Position,
+            fuelFraction: stage2COG.fillFraction,
+            bottom: currentBottom,
+            length: stages[1].length
+        });
+        
+        currentBottom += stages[1].length;
+    }
+    
+    // Payload (always present)
+    const payloadCOG = currentBottom + (payload.length / 2);
+    totalMass += payload.mass;
+    momentSum += payload.mass * payloadCOG;
+    
+    components.push({
+        name: 'Payload',
+        mass: payload.mass,
+        position: payloadCOG,
+        bottom: currentBottom,
+        length: payload.length
+    });
+    
+    currentBottom += payload.length;
+    
+    // Fairing (if not jettisoned)
+    if (!state.fairingJettisoned) {
+        // Fairing is a cone, COG is at ~1/3 from base for uniform cone
+        const fairingCOG = currentBottom + (fairing.length / 3);
+        totalMass += fairing.mass;
+        momentSum += fairing.mass * fairingCOG;
+        
+        components.push({
+            name: 'Fairing',
+            mass: fairing.mass,
+            position: fairingCOG,
+            bottom: currentBottom,
+            length: fairing.length
+        });
+        
+        currentBottom += fairing.length;
+    }
+    
+    // Calculate overall COG
+    const overallCOG = totalMass > 0 ? momentSum / totalMass : 0;
+    const rocketLength = currentBottom;
+    
+    // COG as fraction of rocket length (0 = bottom, 1 = top)
+    const cogFraction = rocketLength > 0 ? overallCOG / rocketLength : 0.5;
+    
+    return {
+        cog: overallCOG,                    // COG from rocket bottom (m)
+        cogFraction,                         // COG as fraction of length (0-1)
+        totalMass,                           // Total rocket mass (kg)
+        rocketLength,                        // Current rocket length (m)
+        components,                          // Breakdown by component
+        // Fuel levels for telemetry
+        stage1Fuel: state.currentStage === 0 ? calculateFuelLevel(0) : null,
+        stage2Fuel: state.currentStage <= 1 ? calculateFuelLevel(1) : null
+    };
+}
+
+/**
+ * ============================================================================
+ * GIMBAL AND ROTATIONAL DYNAMICS
+ * ============================================================================
+ * 
+ * Models the rotational motion of the rocket due to gimbaled thrust.
+ * 
+ * Torque Equation:
+ *   τ = T * sin(δ) * L(t)
+ * 
+ * Where:
+ *   T = Thrust force (N)
+ *   δ = Gimbal angle from rocket centerline (radians)
+ *   L(t) = Moment arm - distance from gimbal point to COG (m)
+ * 
+ * Angular Dynamics:
+ *   τ = I(t) * α
+ *   α = θ̈ = τ / I(t)
+ * 
+ * Where:
+ *   I(t) = Moment of inertia about COG (kg·m²)
+ *   α = Angular acceleration (rad/s²)
+ */
+
+/**
+ * Calculate moment of inertia about the rocket's COG
+ * Uses parallel axis theorem: I_total = Σ(I_component + m * d²)
+ * 
+ * Each component is modeled as a cylinder rotating about an axis
+ * perpendicular to its length:
+ *   I_cylinder = (1/12) * m * L² + (1/4) * m * R²
+ * 
+ * @returns {Object} { momentOfInertia, cogPosition }
+ */
+export function calculateMomentOfInertia() {
+    const cogData = calculateRocketCOG();
+    const cogPosition = cogData.cog;  // COG from rocket bottom
+    const stages = ROCKET_CONFIG.stages;
+    
+    let totalMOI = 0;
+    let currentBottom = 0;
+    
+    // Stage 1 (if not jettisoned)
+    if (state.currentStage === 0) {
+        const stage = stages[0];
+        const radius = stage.diameter / 2;
+        
+        // Engine mass contribution
+        const engineMass = stage.dryMass * stage.dryMassEngineFraction;
+        const engineCOG = currentBottom + stage.engineLength / 2;
+        const engineDist = engineCOG - cogPosition;
+        // Model engine as a point mass for simplicity
+        totalMOI += engineMass * engineDist * engineDist;
+        
+        // Structure mass contribution (distributed along stage)
+        const structureMass = stage.dryMass * (1 - stage.dryMassEngineFraction);
+        const structureCOG = currentBottom + stage.length / 2;
+        const structureDist = structureCOG - cogPosition;
+        // Cylinder MOI about perpendicular axis through center
+        const structureMOILocal = (1/12) * structureMass * stage.length * stage.length;
+        totalMOI += structureMOILocal + structureMass * structureDist * structureDist;
+        
+        // Propellant mass contribution
+        const fuelInfo = calculateFuelLevel(0);
+        const propellantMass = state.propellantRemaining[0];
+        if (propellantMass > 0 && fuelInfo.fuelHeight > 0) {
+            const tankBottom = currentBottom + stage.engineLength;
+            const fuelCOG = tankBottom + fuelInfo.fuelHeight / 2;
+            const fuelDist = fuelCOG - cogPosition;
+            // Cylinder MOI for fuel column
+            const fuelMOILocal = (1/12) * propellantMass * fuelInfo.fuelHeight * fuelInfo.fuelHeight + 
+                                 (1/4) * propellantMass * radius * radius;
+            totalMOI += fuelMOILocal + propellantMass * fuelDist * fuelDist;
+        }
+        
+        currentBottom += stage.length;
+    }
+    
+    // Stage 2 (if not jettisoned)
+    if (state.currentStage <= 1) {
+        const stage = stages[1];
+        const radius = stage.diameter / 2;
+        
+        // Engine mass contribution
+        const engineMass = stage.dryMass * stage.dryMassEngineFraction;
+        const engineCOG = currentBottom + stage.engineLength / 2;
+        const engineDist = engineCOG - cogPosition;
+        totalMOI += engineMass * engineDist * engineDist;
+        
+        // Structure mass contribution
+        const structureMass = stage.dryMass * (1 - stage.dryMassEngineFraction);
+        const structureCOG = currentBottom + stage.length / 2;
+        const structureDist = structureCOG - cogPosition;
+        const structureMOILocal = (1/12) * structureMass * stage.length * stage.length;
+        totalMOI += structureMOILocal + structureMass * structureDist * structureDist;
+        
+        // Propellant mass contribution
+        const fuelInfo = calculateFuelLevel(1);
+        const propellantMass = state.propellantRemaining[1];
+        if (propellantMass > 0 && fuelInfo.fuelHeight > 0) {
+            const tankBottom = currentBottom + stage.engineLength;
+            const fuelCOG = tankBottom + fuelInfo.fuelHeight / 2;
+            const fuelDist = fuelCOG - cogPosition;
+            const fuelMOILocal = (1/12) * propellantMass * fuelInfo.fuelHeight * fuelInfo.fuelHeight + 
+                                 (1/4) * propellantMass * radius * radius;
+            totalMOI += fuelMOILocal + propellantMass * fuelDist * fuelDist;
+        }
+        
+        currentBottom += stage.length;
+    }
+    
+    // Payload contribution
+    const payload = ROCKET_CONFIG.payload;
+    const payloadCOG = currentBottom + payload.length / 2;
+    const payloadDist = payloadCOG - cogPosition;
+    const payloadRadius = payload.diameter / 2;
+    const payloadMOILocal = (1/12) * payload.mass * payload.length * payload.length + 
+                            (1/4) * payload.mass * payloadRadius * payloadRadius;
+    totalMOI += payloadMOILocal + payload.mass * payloadDist * payloadDist;
+    currentBottom += payload.length;
+    
+    // Fairing contribution (if not jettisoned)
+    if (!state.fairingJettisoned) {
+        const fairing = ROCKET_CONFIG.fairing;
+        // Fairing is a cone - COG at 1/3 height, MOI approximated
+        const fairingCOG = currentBottom + fairing.length / 3;
+        const fairingDist = fairingCOG - cogPosition;
+        // Cone MOI about perpendicular axis through apex: I = (3/10)*m*R² + (1/10)*m*h²
+        const fairingRadius = fairing.diameter / 2;
+        const fairingMOILocal = (3/10) * fairing.mass * fairingRadius * fairingRadius + 
+                                (1/10) * fairing.mass * fairing.length * fairing.length;
+        totalMOI += fairingMOILocal + fairing.mass * fairingDist * fairingDist;
+    }
+    
+    return {
+        momentOfInertia: totalMOI,
+        cogPosition: cogPosition
+    };
+}
+
+/**
+ * Calculate the gimbal moment arm - distance from gimbal point to COG
+ * The gimbal point is at the bottom of the current stage's engine
+ * 
+ * @returns {number} Moment arm in meters (positive = COG above gimbal)
+ */
+export function calculateGimbalMomentArm() {
+    if (state.currentStage >= ROCKET_CONFIG.stages.length) {
+        return 0;
+    }
+    
+    const stage = ROCKET_CONFIG.stages[state.currentStage];
+    const cogData = calculateRocketCOG();
+    
+    // Gimbal point is relative to the bottom of the current active stage
+    // For stage 0: gimbal at 0 + gimbalPoint
+    // For stage 1: gimbal at 0 + gimbalPoint (stage 1 is now bottom after separation)
+    const gimbalPointFromRocketBottom = stage.gimbalPoint;
+    
+    // Moment arm = COG position - gimbal position
+    // Positive when COG is above gimbal (normal case)
+    const momentArm = cogData.cog - gimbalPointFromRocketBottom;
+    
+    return momentArm;
+}
+
+/**
+ * Calculate the torque produced by gimbaled thrust
+ * τ = T * sin(δ) * L
+ * 
+ * @param {number} thrust - Current thrust force (N)
+ * @param {number} gimbalAngleDeg - Gimbal angle in degrees
+ * @returns {number} Torque in N·m (positive = clockwise rotation in our frame)
+ */
+export function calculateGimbalTorque(thrust, gimbalAngleDeg) {
+    if (thrust <= 0 || !state.engineOn) {
+        return 0;
+    }
+    
+    const gimbalAngleRad = gimbalAngleDeg * Math.PI / 180;
+    const momentArm = calculateGimbalMomentArm();
+    
+    // Torque = T * sin(δ) * L
+    // Sign convention: positive gimbal (thrust tilted right) 
+    // creates positive torque (clockwise rotation = pitching down/east)
+    const torque = thrust * Math.sin(gimbalAngleRad) * momentArm;
+    
+    return torque;
+}
+
+/**
+ * Calculate angular acceleration from gimbal torque
+ * α = τ / I
+ * 
+ * @param {number} thrust - Current thrust force (N)
+ * @param {number} gimbalAngleDeg - Gimbal angle in degrees
+ * @returns {Object} { angularAccel, torque, momentOfInertia, momentArm }
+ */
+export function calculateAngularAcceleration(thrust, gimbalAngleDeg) {
+    const moiData = calculateMomentOfInertia();
+    const torque = calculateGimbalTorque(thrust, gimbalAngleDeg);
+    
+    // Avoid division by zero
+    const moi = Math.max(moiData.momentOfInertia, 1);
+    
+    const angularAccel = torque / moi;
+    
+    return {
+        angularAccel,                    // rad/s²
+        torque,                          // N·m
+        momentOfInertia: moiData.momentOfInertia,  // kg·m²
+        momentArm: calculateGimbalMomentArm(),     // m
+        cogPosition: moiData.cogPosition           // m from bottom
+    };
+}
+
+/**
+ * Update gimbal angle with rate limiting (actuator dynamics)
+ * 
+ * @param {number} commandedAngle - Desired gimbal angle (degrees)
+ * @param {number} currentAngle - Current gimbal angle (degrees)
+ * @param {number} dt - Time step (seconds)
+ * @returns {number} New gimbal angle (degrees)
+ */
+export function updateGimbalAngle(commandedAngle, currentAngle, dt) {
+    if (state.currentStage >= ROCKET_CONFIG.stages.length) {
+        return 0;
+    }
+    
+    const stage = ROCKET_CONFIG.stages[state.currentStage];
+    const maxAngle = stage.gimbalMaxAngle;
+    const maxRate = stage.gimbalRate;  // degrees/second
+    
+    // Clamp commanded angle to gimbal limits
+    const clampedCommand = Math.max(-maxAngle, Math.min(maxAngle, commandedAngle));
+    
+    // Calculate angle difference
+    const angleDiff = clampedCommand - currentAngle;
+    
+    // Rate-limited movement
+    const maxChange = maxRate * dt;
+    let newAngle;
+    
+    if (Math.abs(angleDiff) <= maxChange) {
+        newAngle = clampedCommand;
+    } else {
+        newAngle = currentAngle + Math.sign(angleDiff) * maxChange;
+    }
+    
+    return newAngle;
+}
+
+/**
+ * Integrate rotational dynamics for one time step
+ * Updates angular velocity and rocket angle
+ * 
+ * @param {number} thrust - Current thrust (N)
+ * @param {number} dt - Time step (seconds)
+ * @returns {Object} { angularVelocity, rocketAngle, gimbalAngle }
+ */
+export function integrateRotationalDynamics(thrust, dt) {
+    // Update gimbal angle (actuator dynamics)
+    const newGimbalAngle = updateGimbalAngle(state.commandedGimbal, state.gimbalAngle, dt);
+    state.gimbalAngle = newGimbalAngle;
+    
+    // Calculate angular acceleration
+    const dynamics = calculateAngularAcceleration(thrust, state.gimbalAngle);
+    
+    // Integrate angular velocity: ω += α * dt
+    state.angularVelocity += dynamics.angularAccel * dt;
+    
+    // Add some angular damping in atmosphere (aerodynamic stability)
+    // This simulates the stabilizing effect of fins/body aerodynamics
+    const altitude = Math.sqrt(state.x * state.x + state.y * state.y) - 6.371e6;
+    if (altitude < 70000) {
+        const { airspeed } = getAirspeed();
+        const density = getAtmosphericDensity(altitude);
+        // Simple damping model: stronger at lower altitude and higher airspeed
+        const dampingCoeff = 0.01 * density * airspeed * airspeed / 1e6;
+        state.angularVelocity *= (1 - dampingCoeff * dt);
+    }
+    
+    // Integrate rocket angle: θ += ω * dt
+    state.rocketAngle += state.angularVelocity * dt;
+    
+    // Keep angle in reasonable bounds (optional, for display purposes)
+    while (state.rocketAngle > Math.PI * 2) state.rocketAngle -= Math.PI * 2;
+    while (state.rocketAngle < -Math.PI * 2) state.rocketAngle += Math.PI * 2;
+    
+    return {
+        angularVelocity: state.angularVelocity,
+        rocketAngle: state.rocketAngle,
+        gimbalAngle: state.gimbalAngle,
+        angularAccel: dynamics.angularAccel,
+        torque: dynamics.torque,
+        momentOfInertia: dynamics.momentOfInertia
+    };
+}
+
+/**
+ * Get the rocket's thrust direction based on its orientation and gimbal
+ * 
+ * @param {Object} localUp - Unit vector pointing up (away from Earth center)
+ * @param {Object} localEast - Unit vector pointing east
+ * @returns {Object} { x, y } - Unit thrust direction vector
+ */
+export function getRocketThrustDirection(localUp, localEast) {
+    // Rocket angle is measured from local vertical (up)
+    // 0 = pointing straight up, positive = tilted east (clockwise)
+    const rocketAngle = state.rocketAngle;
+    const gimbalAngleRad = state.gimbalAngle * Math.PI / 180;
+    
+    // Thrust direction is along rocket axis, modified by gimbal
+    // Rocket pointing direction (without gimbal)
+    const rocketDirX = Math.sin(rocketAngle) * localEast.x + Math.cos(rocketAngle) * localUp.x;
+    const rocketDirY = Math.sin(rocketAngle) * localEast.y + Math.cos(rocketAngle) * localUp.y;
+    
+    // With gimbal, thrust is deflected from rocket axis
+    // Perpendicular to rocket direction (for gimbal deflection)
+    const perpX = Math.cos(rocketAngle) * localEast.x - Math.sin(rocketAngle) * localUp.x;
+    const perpY = Math.cos(rocketAngle) * localEast.y - Math.sin(rocketAngle) * localUp.y;
+    
+    // Thrust direction = rocket direction + gimbal deflection
+    const thrustX = Math.cos(gimbalAngleRad) * rocketDirX + Math.sin(gimbalAngleRad) * perpX;
+    const thrustY = Math.cos(gimbalAngleRad) * rocketDirY + Math.sin(gimbalAngleRad) * perpY;
+    
+    // Normalize (should already be unit vector, but ensure it)
+    const mag = Math.sqrt(thrustX * thrustX + thrustY * thrustY);
+    
+    return {
+        x: thrustX / mag,
+        y: thrustY / mag
+    };
+}
+
+/**
+ * Calculate the commanded gimbal angle to achieve a target pitch
+ * This is used by the guidance system
+ * 
+ * Sign convention:
+ *   - rocketAngle = 0 means pointing straight up (along local vertical)
+ *   - Positive rocketAngle = tilted east (clockwise from up)
+ *   - pitch = 90° - rocketAngle (in degrees)
+ *   - Positive gimbal creates positive torque → increases rocketAngle → decreases pitch
+ *   - Therefore: to INCREASE pitch, we need NEGATIVE gimbal
+ * 
+ * @param {number} targetPitchDeg - Desired pitch angle (degrees from horizontal)
+ * @param {number} dt - Time step for predictive control
+ * @returns {number} Commanded gimbal angle (degrees)
+ */
+export function calculateCommandedGimbal(targetPitchDeg, dt) {
+    // Current rocket orientation (from local vertical)
+    // Convert to pitch from horizontal for comparison
+    const currentPitchRad = (Math.PI / 2) - state.rocketAngle;
+    const currentPitchDeg = currentPitchRad * 180 / Math.PI;
+    
+    // Pitch error (positive = need to pitch up)
+    const pitchError = targetPitchDeg - currentPitchDeg;  // degrees
+    
+    // PD controller gains
+    const Kp = 1.5;   // Proportional gain (degrees gimbal per degree error)
+    const Kd = 0.8;   // Derivative gain (degrees gimbal per degree/sec angular rate)
+    
+    // Current angular velocity in degrees/sec
+    // Positive angularVelocity = rocketAngle increasing = pitch decreasing
+    const angularVelDeg = state.angularVelocity * 180 / Math.PI;
+    
+    // Desired angular velocity to reduce pitch error
+    // To increase pitch (positive error), we need negative angular velocity
+    // Time constant ~2 seconds for smooth response
+    const desiredAngularVelDeg = -pitchError / 2.0;
+    const angularVelError = desiredAngularVelDeg - angularVelDeg;
+    
+    // Gimbal command
+    // Negative Kp because: positive pitch error → need negative gimbal
+    // Positive Kd because: if angularVelError is negative (rotating too fast positive),
+    //                      we need negative gimbal to slow down
+    let gimbalCommand = -Kp * pitchError + Kd * angularVelError;
+    
+    // Clamp to gimbal limits
+    if (state.currentStage < ROCKET_CONFIG.stages.length) {
+        const maxGimbal = ROCKET_CONFIG.stages[state.currentStage].gimbalMaxAngle;
+        gimbalCommand = Math.max(-maxGimbal, Math.min(maxGimbal, gimbalCommand));
+    }
+    
+    return gimbalCommand;
+}
+

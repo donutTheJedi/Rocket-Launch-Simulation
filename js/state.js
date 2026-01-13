@@ -33,7 +33,19 @@ export const state = {
     manualPitch: null, // null | number (null = use guidance, number = manual pitch angle)
     targetAltitude: 500000, // for guided mode, default 500km
     orbitalSpawnAltitude: 500000, // for orbital mode, default 500km
-    guidanceRecommendation: null // stores current guidance pitch for manual mode
+    guidanceRecommendation: null, // stores current guidance pitch for manual mode
+    
+    // Rotational dynamics state
+    // Rocket orientation angle (radians) - angle from local vertical (up)
+    // 0 = pointing straight up, positive = tilted east (clockwise in our frame)
+    rocketAngle: 0,
+    // Angular velocity (radians/second)
+    angularVelocity: 0,
+    // Current gimbal angle (degrees) - deflection from rocket centerline
+    // Positive = thrust vector tilted to cause clockwise rotation (pitch down/east)
+    gimbalAngle: 0,
+    // Commanded gimbal angle from guidance (degrees)
+    commandedGimbal: 0
 };
 
 // Initialize/reset state
@@ -81,6 +93,12 @@ export function initState() {
         state.manualPitch = null;
     }
     state.guidanceRecommendation = null;
+    
+    // Reset rotational dynamics
+    state.rocketAngle = 0;        // Start pointing straight up
+    state.angularVelocity = 0;
+    state.gimbalAngle = 0;
+    state.commandedGimbal = 0;
     
     const eventList = document.getElementById('event-list');
     if (eventList) {
@@ -142,6 +160,14 @@ export function spawnInOrbit(altitude = 500000) {
     state.manualPitch = null;
     state.guidanceRecommendation = null;
     
+    // Initialize rotational state for orbital mode
+    // Rocket should be oriented prograde (along velocity vector)
+    // In our coordinate system at (0, r) moving (+vx, 0), prograde is horizontal
+    state.rocketAngle = Math.PI / 2;  // 90 degrees from vertical = horizontal (prograde)
+    state.angularVelocity = 0;
+    state.gimbalAngle = 0;
+    state.commandedGimbal = 0;
+    
     const eventList = document.getElementById('event-list');
     if (eventList) {
         eventList.innerHTML = '';
@@ -152,8 +178,8 @@ export function spawnInOrbit(altitude = 500000) {
 
 // Get total rocket mass
 export function getTotalMass() {
-    let mass = ROCKET_CONFIG.payload;
-    if (!state.fairingJettisoned) mass += ROCKET_CONFIG.fairingMass;
+    let mass = ROCKET_CONFIG.payload.mass;
+    if (!state.fairingJettisoned) mass += ROCKET_CONFIG.fairing.mass;
     for (let i = state.currentStage; i < ROCKET_CONFIG.stages.length; i++) {
         mass += ROCKET_CONFIG.stages[i].dryMass + state.propellantRemaining[i];
     }
