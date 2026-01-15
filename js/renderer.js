@@ -1,4 +1,4 @@
-import { G, EARTH_MASS, EARTH_RADIUS, KARMAN_LINE } from './constants.js';
+import { G, EARTH_MASS, EARTH_RADIUS, KARMAN_LINE, ROCKET_CONFIG } from './constants.js';
 import { state, getAltitude } from './state.js';
 import { computeGuidance } from './guidance.js';
 
@@ -355,9 +355,22 @@ export function render() {
     ctx.lineTo(drawWid/2, -drawLen * 0.2);
     ctx.fill();
     
-    // Flame
-    if (state.engineOn && state.propellantRemaining[state.currentStage] > 0) {
+    // Flame - only show when actually boosting (engine on, has propellant, valid stage)
+    if (state.engineOn && 
+        state.currentStage < ROCKET_CONFIG.stages.length && 
+        state.propellantRemaining[state.currentStage] > 0) {
+        
+        // Save context to apply gimbal rotation
+        ctx.save();
+        
+        // Rotate by gimbal angle (gimbal angle is in degrees, positive = deflect right/east)
+        // Convert to radians and rotate around the rocket base (where flame starts)
+        const gimbalAngleRad = state.gimbalAngle * Math.PI / 180;
+        ctx.rotate(gimbalAngleRad);
+        
         const flameLen = drawLen * (0.5 + Math.random() * 0.25);
+        
+        // Outer flame (orange/red)
         ctx.beginPath();
         ctx.moveTo(-drawWid * 0.2, -drawLen * 0.4);
         ctx.quadraticCurveTo(-drawWid * 0.35, -drawLen * 0.4 - flameLen * 0.5, 0, -drawLen * 0.4 - flameLen);
@@ -365,18 +378,24 @@ export function render() {
         ctx.fillStyle = `rgb(255, ${80 + Math.random() * 60}, 0)`;
         ctx.fill();
         
+        // Inner flame (yellow/white)
         ctx.beginPath();
         ctx.moveTo(-drawWid * 0.1, -drawLen * 0.4);
         ctx.quadraticCurveTo(-drawWid * 0.15, -drawLen * 0.4 - flameLen * 0.35, 0, -drawLen * 0.4 - flameLen * 0.6);
         ctx.quadraticCurveTo(drawWid * 0.15, -drawLen * 0.4 - flameLen * 0.35, drawWid * 0.1, -drawLen * 0.4);
         ctx.fillStyle = `rgb(255, ${200 + Math.random() * 55}, ${100 + Math.random() * 80})`;
         ctx.fill();
+        
+        // Restore context (undo gimbal rotation)
+        ctx.restore();
     }
     
     ctx.restore();
     
-    // Draw thrust vector arrow
-    if (state.engineOn && state.propellantRemaining[state.currentStage] > 0) {
+    // Draw thrust vector arrow - only show when actually boosting
+    if (state.engineOn && 
+        state.currentStage < ROCKET_CONFIG.stages.length && 
+        state.propellantRemaining[state.currentStage] > 0) {
         const arrowLength = 100;
         const arrowHeadSize = 12;
         
