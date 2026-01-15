@@ -138,11 +138,22 @@ export function updateTelemetry() {
     if (state.gameMode === 'manual') {
         // Show manual pitch and guidance recommendation
         const manualPitchDisplay = document.getElementById('manual-pitch-display');
+        const manualGimbalDisplay = document.getElementById('manual-gimbal-display');
         const guidanceRec = document.getElementById('guidance-recommendation');
         const guidanceRecValue = document.getElementById('guidance-rec-value');
         
         if (manualPitchDisplay) {
             manualPitchDisplay.textContent = (state.manualPitch !== null ? state.manualPitch : pitch).toFixed(1) + '°';
+        }
+        
+        // Show gimbal angle in gimbal control mode
+        if (manualGimbalDisplay) {
+            if (state.settings.controlMode === 'gimbal') {
+                manualGimbalDisplay.textContent = 'Gimbal: ' + state.manualGimbal.toFixed(1) + '°';
+                manualGimbalDisplay.style.display = 'block';
+            } else {
+                manualGimbalDisplay.style.display = 'none';
+            }
         }
         
         if (guidanceRec && guidanceRecValue && state.guidanceRecommendation !== null) {

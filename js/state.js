@@ -45,7 +45,16 @@ export const state = {
     // Positive = thrust vector tilted to cause clockwise rotation (pitch down/east)
     gimbalAngle: 0,
     // Commanded gimbal angle from guidance (degrees)
-    commandedGimbal: 0
+    commandedGimbal: 0,
+    
+    // Settings
+    settings: {
+        controlMode: 'turnrate'  // 'turnrate' or 'gimbal'
+    },
+    
+    // Manual gimbal control (degrees, for gimbal control mode)
+    manualGimbal: 0
+>>>>>>> b882f72 (Add gimbal control mode and fix turn rate scaling)
 };
 
 // Initialize/reset state
@@ -99,6 +108,8 @@ export function initState() {
     state.angularVelocity = 0;
     state.gimbalAngle = 0;
     state.commandedGimbal = 0;
+    state.manualGimbal = 0;
+    // Note: settings are preserved across resets
     
     const eventList = document.getElementById('event-list');
     if (eventList) {
@@ -167,6 +178,7 @@ export function spawnInOrbit(altitude = 500000) {
     state.angularVelocity = 0;
     state.gimbalAngle = 0;
     state.commandedGimbal = 0;
+    state.manualGimbal = 0;
     
     const eventList = document.getElementById('event-list');
     if (eventList) {

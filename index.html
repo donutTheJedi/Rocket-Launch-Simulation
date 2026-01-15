@@ -102,6 +102,20 @@
         </div>
         <div id="current-mode-display" class="current-mode">No mission selected</div>
         
+        <div class="menu-section settings-section">
+            <h3>Settings</h3>
+            <div class="setting-row">
+                <span class="setting-label">Control Mode:</span>
+                <div class="toggle-buttons">
+                    <button id="control-turnrate-btn" class="toggle-btn active">Turn Rate</button>
+                    <button id="control-gimbal-btn" class="toggle-btn">Gimbal</button>
+                </div>
+            </div>
+            <p class="setting-description" id="control-mode-description">
+                Control target pitch angle. Gimbal adjusts automatically.
+            </p>
+        </div>
+        
         <div class="menu-section">
             <h3>Manual Control</h3>
             <p class="menu-description">Control pitch manually (W/S keys). Guidance provides recommendations.</p>
@@ -142,9 +156,10 @@
     </div>
     
     <div id="manual-pitch-controls" style="display: none;">
-        <h3>MANUAL PITCH CONTROL</h3>
+        <h3 id="manual-control-title">MANUAL PITCH CONTROL</h3>
         <div class="pitch-display">
             <div id="manual-pitch-display">90°</div>
+            <div id="manual-gimbal-display" style="display: none;">Gimbal: 0.0°</div>
             <div id="guidance-recommendation" class="guidance-recommendation" style="display: none;">
                 Guidance: <span id="guidance-rec-value">90°</span>
             </div>

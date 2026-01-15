@@ -233,7 +233,12 @@ function update(dt) {
         }
         
         // Calculate commanded gimbal angle to achieve target pitch
-        state.commandedGimbal = calculateCommandedGimbal(targetPitchDeg, actualStepDt);
+        // In gimbal control mode for manual, use the direct manual gimbal input
+        if (state.gameMode === 'manual' && state.settings.controlMode === 'gimbal') {
+            state.commandedGimbal = state.manualGimbal;
+        } else {
+            state.commandedGimbal = calculateCommandedGimbal(targetPitchDeg, actualStepDt);
+        }
         
         // Get current thrust for rotational dynamics
         const thrustStep = getCurrentThrust(altitudeStep, throttleStep);
