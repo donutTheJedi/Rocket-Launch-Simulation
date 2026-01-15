@@ -584,6 +584,60 @@ button:disabled {
     color: #000;
 }
 
+/* Settings Section */
+.settings-section {
+    background: rgba(0, 255, 0, 0.05);
+    border-color: #0f0;
+}
+
+.settings-section h3 {
+    color: #0f0;
+}
+
+.setting-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.setting-label {
+    color: #0f0;
+    font-size: 13px;
+}
+
+.toggle-buttons {
+    display: flex;
+    gap: 5px;
+}
+
+.toggle-btn {
+    padding: 8px 12px;
+    background: #222;
+    border: 1px solid #0f0;
+    color: #0f0;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.toggle-btn:hover {
+    background: rgba(0, 255, 0, 0.2);
+}
+
+.toggle-btn.active {
+    background: #0f0;
+    color: #000;
+    font-weight: bold;
+}
+
+.setting-description {
+    color: #666;
+    font-size: 11px;
+    margin: 0;
+    font-style: italic;
+}
+
 /* Manual Pitch Controls */
 #manual-pitch-controls {
     position: fixed;

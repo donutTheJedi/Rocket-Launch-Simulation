@@ -65,8 +65,8 @@ export function computeRemainingDeltaV(stateObj) {
         
         if (propellant > 0) {
             // Mass at start of current burn
-            let massInitial = ROCKET_CONFIG.payload;
-            if (!stateObj.fairingJettisoned) massInitial += ROCKET_CONFIG.fairingMass;
+            let massInitial = ROCKET_CONFIG.payload.mass;
+            if (!stateObj.fairingJettisoned) massInitial += ROCKET_CONFIG.fairing.mass;
             
             // Add current stage
             massInitial += stage.dryMass + propellant;
@@ -94,7 +94,7 @@ export function computeRemainingDeltaV(stateObj) {
         
         if (propellant > 0) {
             // Mass at start of this stage's burn
-            let massInitial = ROCKET_CONFIG.payload;
+            let massInitial = ROCKET_CONFIG.payload.mass;
             // Fairing should be jettisoned by upper stage
             massInitial += stage.dryMass + propellant;
             
@@ -125,7 +125,7 @@ export function computeInitialDeltaV() {
         const propellant = stage.propellantMass;
         
         // Mass at start of this stage
-        let massInitial = ROCKET_CONFIG.payload + ROCKET_CONFIG.fairingMass;
+        let massInitial = ROCKET_CONFIG.payload.mass + ROCKET_CONFIG.fairing.mass;
         massInitial += stage.dryMass + propellant;
         
         for (let j = i + 1; j < ROCKET_CONFIG.stages.length; j++) {

@@ -251,21 +251,126 @@ export function initInput() {
         pitchDownBtn.addEventListener('mouseleave', () => pitchDownHeld = false);
     }
     
-    // Update manual pitch in game loop (called from main.js)
-    // Uses original dt (before time warp) to keep turning speed consistent regardless of time warp
+    // Update manual control in game loop (called from main.js)
+    // Handles both turn rate mode and gimbal mode
     window.updateManualPitch = function(dt) {
         if (state.gameMode === 'manual' && state.running && state.manualPitch !== null) {
-            // Cap dt to prevent large jumps when frame rate is low
-            const cappedDt = Math.min(dt, 0.1);
-            const pitchRate = GUIDANCE_CONFIG.maxPitchRate;
-            if (pitchUpHeld) {
-                state.manualPitch = state.manualPitch + pitchRate * cappedDt;
+            // Scale dt by time warp so turn rate stays constant in simulation time
+            const scaledDt = dt * state.timeWarp;
+            // Cap to prevent large jumps when frame rate is low (up to 1 second of simulation time)
+            const cappedDt = Math.min(scaledDt, 1.0);
+            
+            if (state.settings.controlMode === 'gimbal') {
+                // Gimbal control mode: directly control gimbal angle
+                const gimbalRate = ROCKET_CONFIG.stages[state.currentStage]?.gimbalRate || 15; // deg/s
+                const maxGimbal = ROCKET_CONFIG.stages[state.currentStage]?.gimbalMaxAngle || 5;
+                
+                if (pitchUpHeld) {
+                    // Pitch up = need negative gimbal (thrust vector tilted to rotate pitch up)
+                    state.manualGimbal = Math.max(-maxGimbal, state.manualGimbal - gimbalRate * cappedDt);
+                }
+                if (pitchDownHeld) {
+                    // Pitch down = need positive gimbal
+                    state.manualGimbal = Math.min(maxGimbal, state.manualGimbal + gimbalRate * cappedDt);
+                }
+                
+                // Return gimbal to neutral when no input (spring back effect)
+                if (!pitchUpHeld && !pitchDownHeld) {
+                    const returnRate = gimbalRate * 0.5; // Return at half speed
+                    if (Math.abs(state.manualGimbal) < returnRate * cappedDt) {
+                        state.manualGimbal = 0;
+                    } else if (state.manualGimbal > 0) {
+                        state.manualGimbal -= returnRate * cappedDt;
+                    } else {
+                        state.manualGimbal += returnRate * cappedDt;
+                    }
+                }
+                
+                // In gimbal mode, update manualPitch to match current rocket pitch
+                // This prevents the guidance from trying to "correct" and allows natural rotation
+                // Rocket angle is in radians, convert to pitch (degrees from horizontal)
+                // rocketAngle: 0 = up, π/2 = horizontal east
+                // pitch: 90° = up, 0° = horizontal
+                const currentPitchRad = (Math.PI / 2) - state.rocketAngle;
+                state.manualPitch = currentPitchRad * 180 / Math.PI;
+            } else {
+                // Turn rate control mode: control target pitch directly
+                const pitchRate = GUIDANCE_CONFIG.maxPitchRate;
+                if (pitchUpHeld) {
+                    state.manualPitch = state.manualPitch + pitchRate * cappedDt;
+                }
+                if (pitchDownHeld) {
+                    state.manualPitch = state.manualPitch - pitchRate * cappedDt;
+                }
             }
-            if (pitchDownHeld) {
-                state.manualPitch = state.manualPitch - pitchRate * cappedDt;
-            }
+            
+            // Clamp pitch to valid range
+            state.manualPitch = Math.max(-90, Math.min(90, state.manualPitch));
         }
     };
+    
+    // Settings toggle handlers
+    const controlTurnRateBtn = document.getElementById('control-turnrate-btn');
+    const controlGimbalBtn = document.getElementById('control-gimbal-btn');
+    const controlModeDescription = document.getElementById('control-mode-description');
+    
+    function updateControlModeUI() {
+        const isGimbalMode = state.settings.controlMode === 'gimbal';
+        
+        if (controlTurnRateBtn) {
+            controlTurnRateBtn.classList.toggle('active', !isGimbalMode);
+        }
+        if (controlGimbalBtn) {
+            controlGimbalBtn.classList.toggle('active', isGimbalMode);
+        }
+        if (controlModeDescription) {
+            controlModeDescription.textContent = isGimbalMode 
+                ? 'Control gimbal angle directly. Turn rate depends on thrust.'
+                : 'Control target pitch angle. Gimbal adjusts automatically.';
+        }
+        
+        // Update manual control UI labels
+        const controlTitle = document.getElementById('manual-control-title');
+        const pitchDisplay = document.getElementById('manual-pitch-display');
+        const gimbalDisplay = document.getElementById('manual-gimbal-display');
+        const pitchUpBtn = document.getElementById('pitch-up-btn');
+        const pitchDownBtn = document.getElementById('pitch-down-btn');
+        
+        if (controlTitle) {
+            controlTitle.textContent = isGimbalMode ? 'MANUAL GIMBAL CONTROL' : 'MANUAL PITCH CONTROL';
+        }
+        if (gimbalDisplay) {
+            gimbalDisplay.style.display = isGimbalMode ? 'block' : 'none';
+        }
+        if (pitchUpBtn) {
+            pitchUpBtn.innerHTML = isGimbalMode ? '↑ GIMBAL UP<br>(W Key)' : '↑ PITCH UP<br>(W Key)';
+        }
+        if (pitchDownBtn) {
+            pitchDownBtn.innerHTML = isGimbalMode ? '↓ GIMBAL DOWN<br>(S Key)' : '↓ PITCH DOWN<br>(S Key)';
+        }
+    }
+    
+    if (controlTurnRateBtn) {
+        controlTurnRateBtn.addEventListener('click', () => {
+            state.settings.controlMode = 'turnrate';
+            state.manualGimbal = 0; // Reset gimbal when switching modes
+            updateControlModeUI();
+        });
+    }
+    
+    if (controlGimbalBtn) {
+        controlGimbalBtn.addEventListener('click', () => {
+            state.settings.controlMode = 'gimbal';
+            state.manualGimbal = 0; // Reset gimbal when switching modes
+            updateControlModeUI();
+        });
+    }
+    
+    // Export update function for use elsewhere
+    window.updateControlModeUI = updateControlModeUI;
+    
+    // Initialize UI state
+    updateControlModeUI();
 }
 
 

@@ -21,7 +21,14 @@ export const ROCKET_CONFIG = {
             ispVac: 311,
             diameter: 3.7,
             length: 47,
-            dragCoeff: 0.3
+            tankLengthRatio: 0.85,     // Fraction of stage length that is tank
+            engineLength: 3.0,          // Length of engine section at bottom (m)
+            dryMassEngineFraction: 0.6, // Fraction of dry mass in engines (bottom)
+            dragCoeff: 0.3,
+            // Gimbal configuration (Merlin 1D specs)
+            gimbalMaxAngle: 5.0,        // degrees - max gimbal deflection
+            gimbalRate: 20.0,           // degrees/second - gimbal actuator rate
+            gimbalPoint: 0.5            // meters from stage bottom - gimbal pivot point
         },
         {
             name: "Stage 2",
@@ -33,13 +40,33 @@ export const ROCKET_CONFIG = {
             ispVac: 348,
             diameter: 3.7,
             length: 14,
-            dragCoeff: 0.25
+            tankLengthRatio: 0.80,     // Fraction of stage length that is tank
+            engineLength: 2.0,          // Length of engine section at bottom (m)
+            dryMassEngineFraction: 0.5, // Fraction of dry mass in engines (bottom)
+            dragCoeff: 0.25,
+            // Gimbal configuration (MVac specs)
+            gimbalMaxAngle: 5.0,        // degrees - max gimbal deflection  
+            gimbalRate: 15.0,           // degrees/second - gimbal actuator rate
+            gimbalPoint: 0.3            // meters from stage bottom - gimbal pivot point
         }
     ],
-    payload: 15000,
-    fairingMass: 1700,
+    payload: {
+        mass: 15000,
+        length: 5,          // Payload section length (m)
+        diameter: 3.7       // Same as rocket diameter
+    },
+    fairing: {
+        mass: 1700,
+        length: 4,          // Fairing length (m) - cone shape on top
+        diameter: 3.7
+    },
     fairingJettisonAlt: 110000,
-    totalLength: 70
+    totalLength: 70,        // Total rocket length (m)
+    
+    // Propellant properties (RP-1/LOX mixture)
+    // Average density of RP-1 (~820 kg/m³) and LOX (~1140 kg/m³)
+    // Mixed at ~2.5:1 ratio by mass gives effective density ~911 kg/m³
+    propellantDensity: 923  // kg/m³
 };
 
 // ============================================================================

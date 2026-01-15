@@ -1,6 +1,6 @@
 import { EARTH_RADIUS, ROCKET_CONFIG, KARMAN_LINE } from './constants.js';
 import { state, getAltitude, getTotalMass, getPitch } from './state.js';
-import { getAtmosphericDensity, getCurrentThrust, getAirspeed, getCurrentDragCoefficient } from './physics.js';
+import { getAtmosphericDensity, getCurrentThrust, getAirspeed, getCurrentDragCoefficient, calculateRocketCOG, calculateFuelLevel } from './physics.js';
 import { formatTime, formatTMinus, getNextEvent } from './events.js';
 import { predictOrbit } from './orbital.js';
 
@@ -83,8 +83,41 @@ export function updateTelemetry() {
     }
     document.getElementById('thrust').textContent = (thrust / 1000).toFixed(0) + ' kN';
     
+    // Calculate and display COG
+    const cogEl = document.getElementById('cog');
+    const fuelLevelEl = document.getElementById('fuel-level');
+    if (cogEl || fuelLevelEl) {
+        try {
+            const cogData = calculateRocketCOG();
+            if (cogEl) {
+                // Show COG from bottom and as percentage
+                cogEl.textContent = cogData.cog.toFixed(1) + ' m (' + (cogData.cogFraction * 100).toFixed(0) + '%)';
+            }
+            if (fuelLevelEl && state.currentStage < ROCKET_CONFIG.stages.length) {
+                // Show fuel level in current stage tank
+                const fuelInfo = calculateFuelLevel(state.currentStage);
+                fuelLevelEl.textContent = fuelInfo.fuelHeight.toFixed(1) + ' m / ' + fuelInfo.tankHeight.toFixed(1) + ' m';
+            }
+        } catch (e) {
+            // Fallback if COG calculation fails
+            if (cogEl) cogEl.textContent = '-- m';
+            if (fuelLevelEl) fuelLevelEl.textContent = '-- m';
+        }
+    }
+    
     const pitch = getPitch(state.time);
     document.getElementById('pitch').textContent = pitch.toFixed(1) + '°';
+    
+    // Display gimbal angle and turn rate
+    const gimbalEl = document.getElementById('gimbal');
+    const turnRateEl = document.getElementById('turn-rate');
+    if (gimbalEl) {
+        gimbalEl.textContent = state.gimbalAngle.toFixed(1) + '°';
+    }
+    if (turnRateEl) {
+        const turnRateDegPerSec = state.angularVelocity * 180 / Math.PI;
+        turnRateEl.textContent = turnRateDegPerSec.toFixed(1) + ' °/s';
+    }
     
     // Check if fuel is available (used for mobile manual mode positioning)
     let hasFuel = false;
@@ -105,11 +138,22 @@ export function updateTelemetry() {
     if (state.gameMode === 'manual') {
         // Show manual pitch and guidance recommendation
         const manualPitchDisplay = document.getElementById('manual-pitch-display');
+        const manualGimbalDisplay = document.getElementById('manual-gimbal-display');
         const guidanceRec = document.getElementById('guidance-recommendation');
         const guidanceRecValue = document.getElementById('guidance-rec-value');
         
         if (manualPitchDisplay) {
             manualPitchDisplay.textContent = (state.manualPitch !== null ? state.manualPitch : pitch).toFixed(1) + '°';
+        }
+        
+        // Show gimbal angle in gimbal control mode
+        if (manualGimbalDisplay) {
+            if (state.settings.controlMode === 'gimbal') {
+                manualGimbalDisplay.textContent = 'Gimbal: ' + state.manualGimbal.toFixed(1) + '°';
+                manualGimbalDisplay.style.display = 'block';
+            } else {
+                manualGimbalDisplay.style.display = 'none';
+            }
         }
         
         if (guidanceRec && guidanceRecValue && state.guidanceRecommendation !== null) {

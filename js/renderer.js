@@ -6,6 +6,9 @@ import { computeGuidance } from './guidance.js';
 let canvas = null;
 let ctx = null;
 
+// Track previous rocket rotation angle for smooth interpolation
+let previousRocketCanvasAngle = null;
+
 // Initialize renderer with canvas element
 export function initRenderer(canvasElement) {
     canvas = canvasElement;
@@ -257,43 +260,69 @@ export function render() {
     ctx.translate(state.x + localUp.x * rocketLen * 0.5, state.y + localUp.y * rocketLen * 0.5);
     
     // Calculate rocket orientation
+    // Use state.rocketAngle directly for smooth animation (physics-based)
     // In orbital mode when not burning, point along velocity (prograde)
     // When burning, point along thrust direction
-    // Otherwise, use guidance or pitch
-    let rocketDir;
+    // Otherwise, use the physics-integrated rocketAngle
+    let rocketAngle;
     const currentAltitude = getAltitude();
     const pitchProgramComplete = state.gameMode === 'orbital' || state.time > 600 || (!state.engineOn && currentAltitude > 150000);
     
     if (state.burnMode && pitchProgramComplete && currentAltitude > 150000) {
-        // Burning: point along thrust direction
+        // Burning: point along thrust direction (calculate from velocity)
         const velocity = Math.sqrt(state.vx * state.vx + state.vy * state.vy);
-        rocketDir = velocity > 0 ? { x: state.vx / velocity, y: state.vy / velocity } : { x: localEast.x, y: localEast.y };
-    } else if (state.gameMode === 'orbital') {
+        if (velocity > 0) {
+            const progradeDir = { x: state.vx / velocity, y: state.vy / velocity };
+            // Convert direction to angle relative to local vertical
+            // progradeDir = sin(angle) * localEast + cos(angle) * localUp
+            // Solve for angle: dot with localEast gives sin(angle), dot with localUp gives cos(angle)
+            const sinAngle = progradeDir.x * localEast.x + progradeDir.y * localEast.y;
+            const cosAngle = progradeDir.x * localUp.x + progradeDir.y * localUp.y;
+            rocketAngle = Math.atan2(sinAngle, cosAngle);
+        } else {
+            rocketAngle = state.rocketAngle;
+        }
+    } else if (state.gameMode === 'orbital' && !state.engineOn) {
         // Orbital mode, not burning: point along velocity (prograde)
         const velocity = Math.sqrt(state.vx * state.vx + state.vy * state.vy);
-        rocketDir = velocity > 0 ? { x: state.vx / velocity, y: state.vy / velocity } : { x: localEast.x, y: localEast.y };
-    } else {
-        // Use pitch to determine direction
-        const pitch = state.guidancePitch !== undefined ? state.guidancePitch : 90.0;
-        // In manual mode, use manual pitch
-        if (state.gameMode === 'manual' && state.manualPitch !== null) {
-            const pitchRad = state.manualPitch * Math.PI / 180;
-            rocketDir = {
-                x: Math.cos(pitchRad) * localEast.x + Math.sin(pitchRad) * localUp.x,
-                y: Math.cos(pitchRad) * localEast.y + Math.sin(pitchRad) * localUp.y
-            };
+        if (velocity > 0) {
+            const progradeDir = { x: state.vx / velocity, y: state.vy / velocity };
+            const sinAngle = progradeDir.x * localEast.x + progradeDir.y * localEast.y;
+            const cosAngle = progradeDir.x * localUp.x + progradeDir.y * localUp.y;
+            rocketAngle = Math.atan2(sinAngle, cosAngle);
         } else {
-            // Use guidance pitch
-            const pitchRad = pitch * Math.PI / 180;
-            rocketDir = {
-                x: Math.cos(pitchRad) * localEast.x + Math.sin(pitchRad) * localUp.x,
-                y: Math.cos(pitchRad) * localEast.y + Math.sin(pitchRad) * localUp.y
-            };
+            rocketAngle = state.rocketAngle;
         }
+    } else {
+        // Use physics-integrated rocketAngle directly for smooth animation
+        // This is continuously integrated and won't have discontinuities
+        rocketAngle = state.rocketAngle;
     }
     
-    const rocketAngle = Math.atan2(rocketDir.y, rocketDir.x) - Math.PI / 2;
-    ctx.rotate(rocketAngle);
+    // Convert rocketAngle (relative to local vertical) to canvas rotation
+    // rocketAngle: 0 = up, π/2 = east, -π/2 = west
+    // Canvas: need to rotate based on world coordinates
+    // The rocket is drawn pointing "up" in canvas (negative y in world due to scale flip)
+    // We need to find the angle of the rocket direction in world coordinates
+    const rocketDirX = Math.sin(rocketAngle) * localEast.x + Math.cos(rocketAngle) * localUp.x;
+    const rocketDirY = Math.sin(rocketAngle) * localEast.y + Math.cos(rocketAngle) * localUp.y;
+    const rocketDir = { x: rocketDirX, y: rocketDirY }; // Store for use in thrust arrow
+    let canvasRotation = Math.atan2(rocketDirY, rocketDirX) - Math.PI / 2;
+    
+    // Normalize angle to prevent snapping when crossing quadrant boundaries
+    // Keep the angle within ±π of the previous angle for smooth animation
+    if (previousRocketCanvasAngle !== null) {
+        // Normalize to be within ±π of previous angle
+        while (canvasRotation - previousRocketCanvasAngle > Math.PI) {
+            canvasRotation -= 2 * Math.PI;
+        }
+        while (canvasRotation - previousRocketCanvasAngle < -Math.PI) {
+            canvasRotation += 2 * Math.PI;
+        }
+    }
+    previousRocketCanvasAngle = canvasRotation;
+    
+    ctx.rotate(canvasRotation);
     
     // Make rocket visible even when zoomed out
     const minPixelSize = 12;

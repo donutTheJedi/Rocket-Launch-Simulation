@@ -1,6 +1,7 @@
 import { EARTH_RADIUS, EARTH_ROTATION, KARMAN_LINE, ROCKET_CONFIG, GUIDANCE_CONFIG } from './constants.js';
 import { state, initState, getAltitude, getTotalMass, resetCurrentMission, spawnInOrbit } from './state.js';
-import { getGravity, getCurrentThrust, getMassFlowRate, getAtmosphericDensity, getAirspeed, getDrag } from './physics.js';
+import { getGravity, getCurrentThrust, getMassFlowRate, getAtmosphericDensity, getAirspeed, getDrag, 
+         integrateRotationalDynamics, getRocketThrustDirection, calculateCommandedGimbal } from './physics.js';
 import { calculateOrbitalElements } from './orbital.js';
 import { computeGuidance, guidanceState, resetGuidance } from './guidance.js';
 import { addEvent } from './events.js';
@@ -107,10 +108,10 @@ function update(dt) {
         const localEastStep = { x: localUpStep.y, y: -localUpStep.x };
         
         // Compute guidance for each sub-step if not in burn mode
-        let thrustDirStep = thrustDir;
+        let targetPitchDeg = 90;  // Default: straight up
         let throttleStep = 1.0;
         
-        // If in burn mode, recalculate thrust direction for each sub-step (velocity changes)
+        // If in burn mode, calculate target orientation
         if (thrustDir && state.burnMode) {
             const velocity = Math.sqrt(state.vx * state.vx + state.vy * state.vy);
             const prograde = velocity > 0 ? { x: state.vx / velocity, y: state.vy / velocity } : { x: 0, y: 0 };
@@ -118,55 +119,64 @@ function update(dt) {
             const h = state.x * state.vy - state.y * state.vx;
             const normal = h > 0 ? { x: -localUpStep.y, y: localUpStep.x } : { x: localUpStep.y, y: -localUpStep.x };
             
+            let targetDir;
             switch (state.burnMode) {
                 case 'prograde':
-                    thrustDirStep = prograde;
+                    targetDir = prograde;
                     break;
                 case 'retrograde':
-                    thrustDirStep = { x: -prograde.x, y: -prograde.y };
+                    targetDir = { x: -prograde.x, y: -prograde.y };
                     break;
                 case 'normal':
-                    thrustDirStep = normal;
+                    targetDir = normal;
                     break;
                 case 'anti-normal':
-                    thrustDirStep = { x: -normal.x, y: -normal.y };
+                    targetDir = { x: -normal.x, y: -normal.y };
                     break;
                 case 'radial':
-                    thrustDirStep = radial;
+                    targetDir = radial;
                     break;
                 case 'anti-radial':
-                    thrustDirStep = { x: -radial.x, y: -radial.y };
+                    targetDir = { x: -radial.x, y: -radial.y };
                     break;
                 default:
-                    thrustDirStep = prograde;
+                    targetDir = prograde;
             }
+            
+            // Convert target direction to pitch angle
+            // Pitch is angle from horizontal (local east)
+            const dotUp = targetDir.x * localUpStep.x + targetDir.y * localUpStep.y;
+            const dotEast = targetDir.x * localEastStep.x + targetDir.y * localEastStep.y;
+            targetPitchDeg = Math.atan2(dotUp, dotEast) * 180 / Math.PI;
+            throttleStep = 1.0;
         }
         
         if (!thrustDir) {
             // Skip guidance in orbital mode (user uses burn controls)
             if (state.gameMode === 'orbital') {
                 // No thrust in orbital mode unless using burn controls
-                thrustDirStep = { x: 0, y: 0 };
                 throttleStep = 0;
+                // Keep rocket oriented prograde when coasting
+                const velocity = Math.sqrt(state.vx * state.vx + state.vy * state.vy);
+                if (velocity > 0) {
+                    const prograde = { x: state.vx / velocity, y: state.vy / velocity };
+                    const dotUp = prograde.x * localUpStep.x + prograde.y * localUpStep.y;
+                    const dotEast = prograde.x * localEastStep.x + prograde.y * localEastStep.y;
+                    targetPitchDeg = Math.atan2(dotUp, dotEast) * 180 / Math.PI;
+                }
             } else {
                 // Guidance mode - update every sub-step for accuracy
                 const guidance = computeGuidance(state, actualStepDt);
                 
-                // In manual mode, use manual pitch for thrust direction but store guidance recommendation
+                // In manual mode, use manual pitch but store guidance recommendation
                 if (state.gameMode === 'manual' && state.manualPitch !== null) {
                     // Store guidance recommendation
                     state.guidanceRecommendation = guidance.pitch;
-                    
-                    // Use manual pitch for thrust direction (with current local frame)
-                    const pitchRad = state.manualPitch * Math.PI / 180;
-                    thrustDirStep = {
-                        x: Math.cos(pitchRad) * localEastStep.x + Math.sin(pitchRad) * localUpStep.x,
-                        y: Math.cos(pitchRad) * localEastStep.y + Math.sin(pitchRad) * localUpStep.y
-                    };
+                    targetPitchDeg = state.manualPitch;
                     throttleStep = guidance.throttle; // Still use guidance throttle
                 } else {
                     // Normal guidance mode
-                    thrustDirStep = guidance.thrustDir;
+                    targetPitchDeg = guidance.pitch;
                     throttleStep = guidance.throttle;
                 }
                 
@@ -218,15 +228,31 @@ function update(dt) {
                 }
             }
         } else {
-            // Manual burn mode - use fixed thrust direction from above
+            // Manual burn mode
             throttleStep = 1.0;
         }
+        
+        // Calculate commanded gimbal angle to achieve target pitch
+        // In gimbal control mode for manual, use the direct manual gimbal input
+        if (state.gameMode === 'manual' && state.settings.controlMode === 'gimbal') {
+            state.commandedGimbal = state.manualGimbal;
+        } else {
+            state.commandedGimbal = calculateCommandedGimbal(targetPitchDeg, actualStepDt);
+        }
+        
+        // Get current thrust for rotational dynamics
+        const thrustStep = getCurrentThrust(altitudeStep, throttleStep);
+        
+        // Integrate rotational dynamics (updates gimbal angle, angular velocity, rocket angle)
+        integrateRotationalDynamics(thrustStep, actualStepDt);
+        
+        // Get actual thrust direction based on rocket orientation and gimbal
+        const thrustDirStep = getRocketThrustDirection(localUpStep, localEastStep);
         
         const gravityStep = getGravity(rStep);
         const gxStep = -gravityStep * state.x / rStep;
         const gyStep = -gravityStep * state.y / rStep;
         
-        const thrustStep = getCurrentThrust(altitudeStep, throttleStep);
         const thrustAccelStep = thrustStep / mass;
         const taxStep = thrustAccelStep * thrustDirStep.x;
         const tayStep = thrustAccelStep * thrustDirStep.y;
