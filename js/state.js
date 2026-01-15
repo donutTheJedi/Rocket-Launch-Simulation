@@ -54,7 +54,6 @@ export const state = {
     
     // Manual gimbal control (degrees, for gimbal control mode)
     manualGimbal: 0
->>>>>>> b882f72 (Add gimbal control mode and fix turn rate scaling)
 };
 
 // Initialize/reset state
