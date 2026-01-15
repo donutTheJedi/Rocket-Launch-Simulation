@@ -10,6 +10,7 @@ export let guidanceState = {
     lastCommandedPitch: 90,
     throttle: 1.0,
     lastFlightPathAngle: 90,
+    lastRocketPitch: 90,  // Track rocket pitch for turn rate calculation
     lastPeriapsis: 0,
     lastApoapsis: 0,
     isRetrograde: false,
@@ -24,6 +25,7 @@ export function resetGuidance() {
         lastCommandedPitch: 90,
         throttle: 1.0,
         lastFlightPathAngle: 90,
+        lastRocketPitch: 90,  // Track rocket pitch for turn rate calculation
         lastPeriapsis: 0,
         lastApoapsis: 0,
         isRetrograde: false,
@@ -56,6 +58,12 @@ export function computeGuidance(state, dt) {
     // Flight path angle (angle of velocity from horizontal)
     // 90° = straight up, 0° = horizontal, negative = descending
     const flightPathAngle = Math.atan2(vVertical, vHorizontal) * 180 / Math.PI;
+    
+    // Current rocket pitch (angle of rocket orientation from horizontal)
+    // Use state.rocketAngle which is physics-integrated and accurate
+    // rocketAngle: 0 = pointing straight up, positive = tilted east
+    // pitch = 90° - rocketAngle (in degrees)
+    const currentRocketPitch = (Math.PI / 2 - state.rocketAngle) * 180 / Math.PI;
     
     // Dynamic pressure (for max Q check)
     const airDensity = getAtmosphericDensity(altitude);
@@ -152,11 +160,13 @@ export function computeGuidance(state, dt) {
                 const gamma = flightPathAngle * Math.PI / 180;
                 const naturalTurnRate = (g * Math.cos(gamma) / velocity) * 180 / Math.PI;  // deg/sec
                 
-                // Measure actual turn rate
-                const actualTurnRate = dt > 0 ? (guidanceState.lastFlightPathAngle - flightPathAngle) / dt : 0;
+                // Measure actual turn rate using rocket pitch (where rocket is actually pointing)
+                // This is more accurate than flight path angle since it accounts for actual rocket orientation
+                const actualTurnRate = dt > 0 ? (guidanceState.lastRocketPitch - currentRocketPitch) / dt : 0;
                 
                 // Store for next frame
                 guidanceState.lastFlightPathAngle = flightPathAngle;
+                guidanceState.lastRocketPitch = currentRocketPitch;
                 
                 // CONSTRAINT 1: Turn rate limiting
                 let correction = 0;
@@ -235,6 +245,8 @@ export function computeGuidance(state, dt) {
                 debugInfo.minPitchForAltitude = minPitchForAltitude;
                 debugInfo.naturalTurnRate = naturalTurnRate;
                 debugInfo.actualTurnRate = actualTurnRate;
+                debugInfo.currentRocketPitch = currentRocketPitch;
+                debugInfo.flightPathAngle = flightPathAngle;
             }
         }
     }
