@@ -282,6 +282,29 @@ function update(dt) {
         }
     }
     
+    // Calculate force unit vectors for force diagram (after all sub-steps, use final values)
+    const rFinal = Math.sqrt(state.x * state.x + state.y * state.y);
+    const localUpFinal = { x: state.x / rFinal, y: state.y / rFinal };
+    const localEastFinal = { x: localUpFinal.y, y: -localUpFinal.x };
+    
+    state.forceVectors.gravity = { x: -localUpFinal.x, y: -localUpFinal.y };
+    
+    if (state.engineOn && state.currentStage < ROCKET_CONFIG.stages.length &&
+        state.propellantRemaining[state.currentStage] > 0) {
+        state.forceVectors.thrust = getRocketThrustDirection(localUpFinal, localEastFinal);
+    } else {
+        state.forceVectors.thrust = { x: 0, y: 0 };
+    }
+    
+    const altFinal = getAltitude();
+    const inAtmosphere = altFinal < KARMAN_LINE;
+    const { airspeed, airVx, airVy } = getAirspeed();
+    if (inAtmosphere && airspeed > 0.1) {
+        state.forceVectors.drag = { x: -airVx / airspeed, y: -airVy / airspeed };
+    } else {
+        state.forceVectors.drag = { x: 0, y: 0 };
+    }
+    
     // Check for stage depletion after all sub-steps
     if (state.currentStage < ROCKET_CONFIG.stages.length && 
         state.propellantRemaining[state.currentStage] <= 0) {

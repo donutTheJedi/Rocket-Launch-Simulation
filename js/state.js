@@ -53,7 +53,14 @@ export const state = {
     },
     
     // Manual gimbal control (degrees, for gimbal control mode)
-    manualGimbal: 0
+    manualGimbal: 0,
+    
+    // Force vectors for force diagram (unit vectors)
+    forceVectors: {
+        gravity: { x: 0, y: 0 },    // Unit vector pointing toward Earth center
+        thrust: { x: 0, y: 0 },     // Unit vector along thrust direction
+        drag: { x: 0, y: 0 }         // Unit vector opposite to airspeed direction
+    }
 };
 
 // Initialize/reset state
@@ -108,6 +115,12 @@ export function initState() {
     state.gimbalAngle = 0;
     state.commandedGimbal = 0;
     state.manualGimbal = 0;
+    // Reset force vectors
+    state.forceVectors = {
+        gravity: { x: 0, y: 0 },
+        thrust: { x: 0, y: 0 },
+        drag: { x: 0, y: 0 }
+    };
     // Note: settings are preserved across resets
     
     const eventList = document.getElementById('event-list');
@@ -178,6 +191,12 @@ export function spawnInOrbit(altitude = 500000) {
     state.gimbalAngle = 0;
     state.commandedGimbal = 0;
     state.manualGimbal = 0;
+    // Reset force vectors
+    state.forceVectors = {
+        gravity: { x: 0, y: 0 },
+        thrust: { x: 0, y: 0 },
+        drag: { x: 0, y: 0 }
+    };
     
     const eventList = document.getElementById('event-list');
     if (eventList) {

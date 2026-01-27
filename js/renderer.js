@@ -557,5 +557,111 @@ export function render() {
     ctx.fillStyle = '#555';
     ctx.font = '11px Courier New';
     ctx.fillText(`${metersPerPixel < 1000 ? metersPerPixel.toFixed(1) + ' m/px' : (metersPerPixel/1000).toFixed(2) + ' km/px'}`, 10, canvas.height - 10);
+    
+    // Force diagram (all modes)
+    drawForceDiagram(ctx, canvas);
+}
+
+// Draw force diagram in top right, beneath Mission Events (position updates with events panel height)
+function drawForceDiagram(ctx, canvas) {
+    const diagramSize = 120;
+    const gap = 10;
+    const rightMargin = 20;
+    
+    const eventsEl = document.getElementById('events');
+    const top = eventsEl ? eventsEl.getBoundingClientRect().bottom + gap : 20 + 320 + gap;
+    
+    const centerX = canvas.width - rightMargin - diagramSize / 2;
+    const centerY = top + diagramSize / 2;
+    const radius = 40;
+    
+    // Background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(centerX - diagramSize/2, centerY - diagramSize/2, diagramSize, diagramSize);
+    ctx.strokeStyle = '#0ff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(centerX - diagramSize/2, centerY - diagramSize/2, diagramSize, diagramSize);
+    
+    // Title
+    ctx.fillStyle = '#0ff';
+    ctx.font = '10px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('FORCES', centerX, centerY - diagramSize/2 + 12);
+    
+    // Draw reference circle
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    // Draw center point (rocket)
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 2, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Draw force vectors
+    const arrowLength = radius * 0.8;
+    const arrowHeadSize = 6;
+    
+    // Gravity (red, pointing down)
+    if (state.forceVectors.gravity.x !== 0 || state.forceVectors.gravity.y !== 0) {
+        drawForceVector(ctx, centerX, centerY, state.forceVectors.gravity, arrowLength, arrowHeadSize, '#f00', 'G');
+    }
+    
+    // Thrust (green, pointing along thrust direction)
+    if (state.forceVectors.thrust.x !== 0 || state.forceVectors.thrust.y !== 0) {
+        drawForceVector(ctx, centerX, centerY, state.forceVectors.thrust, arrowLength, arrowHeadSize, '#0f0', 'T');
+    }
+    
+    // Drag (yellow, pointing opposite to velocity)
+    if (state.forceVectors.drag.x !== 0 || state.forceVectors.drag.y !== 0) {
+        drawForceVector(ctx, centerX, centerY, state.forceVectors.drag, arrowLength, arrowHeadSize, '#ff0', 'D');
+    }
+    
+    ctx.textAlign = 'left'; // Reset text alignment
+}
+
+// Draw a single force vector arrow
+// Note: direction is in world coordinates (Y up), but canvas has Y down, so flip Y
+function drawForceVector(ctx, x, y, direction, length, headSize, color, label) {
+    // Flip Y component for screen coordinates (canvas Y increases downward)
+    const screenDirX = direction.x;
+    const screenDirY = -direction.y;
+    const endX = x + screenDirX * length;
+    const endY = y + screenDirY * length;
+    
+    // Draw arrow line
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+    
+    // Draw arrowhead (use screen direction for angle)
+    const angle = Math.atan2(screenDirY, screenDirX);
+    ctx.beginPath();
+    ctx.moveTo(endX, endY);
+    ctx.lineTo(
+        endX - headSize * Math.cos(angle - Math.PI / 6),
+        endY - headSize * Math.sin(angle - Math.PI / 6)
+    );
+    ctx.lineTo(
+        endX - headSize * Math.cos(angle + Math.PI / 6),
+        endY - headSize * Math.sin(angle + Math.PI / 6)
+    );
+    ctx.closePath();
+    ctx.fill();
+    
+    // Draw label near arrowhead
+    ctx.fillStyle = color;
+    ctx.font = '9px Courier New';
+    ctx.textAlign = 'center';
+    const labelX = endX + screenDirX * 8;
+    const labelY = endY + screenDirY * 8;
+    ctx.fillText(label, labelX, labelY + 3);
 }
 
