@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="How the Rocket Launch Trajectory Simulator works: physics, modes, controls, and guidance.">
+    <title>How it works | Rocket Launch Trajectory Simulator</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a0a0a;
+            color: #ccc;
+            font-family: 'Courier New', monospace;
+            line-height: 1.6;
+            padding: 20px;
+            max-width: 720px;
+            margin: 0 auto;
+        }
+        a { color: #0ff; text-decoration: none; }
+        a:hover { color: #0f0; text-decoration: underline; }
+        h1 { color: #0ff; font-size: 1.4rem; margin-bottom: 8px; border-bottom: 1px solid #0ff; padding-bottom: 8px; }
+        h2 { color: #0f0; font-size: 1.1rem; margin-top: 24px; margin-bottom: 8px; }
+        h3 { color: #f80; font-size: 1rem; margin-top: 16px; margin-bottom: 6px; }
+        p { margin-bottom: 12px; font-size: 14px; }
+        ul { margin-left: 20px; margin-bottom: 12px; }
+        li { margin-bottom: 4px; font-size: 14px; }
+        .back { display: inline-block; margin-bottom: 20px; padding: 8px 12px; background: rgba(0,255,255,0.1); border: 1px solid #0ff; border-radius: 4px; color: #0ff; }
+        .back:hover { background: rgba(0,255,255,0.2); color: #0f0; text-decoration: none; }
+        table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+        th, td { border: 1px solid #333; padding: 8px; text-align: left; }
+        th { color: #0ff; background: rgba(0,255,255,0.08); }
+        .muted { color: #666; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <a href="index.html" class="back">← Back to Simulator</a>
+
+    <h1>Rocket Launch Trajectory Simulator — How it works</h1>
+    <p>An interactive 2D physics simulation of orbital mechanics and rocket launches from Earth. Realistic atmosphere, variable thrust, drag, and a closed-loop guidance system.</p>
+
+    <h2>Game modes</h2>
+    <p>Choose a mode from <strong>MENU</strong> before launching.</p>
+    <ul>
+        <li><strong>Manual control</strong> — You control pitch with W/S (or on-screen buttons). Guidance shows recommended pitch in cyan. Good for learning.</li>
+        <li><strong>Guided launch</strong> — Set a target altitude (150–2000 km). The guidance system flies the rocket and circularizes the orbit automatically.</li>
+        <li><strong>Orbital mode</strong> — Start already in orbit (200–800 km presets). Practice prograde, retrograde, normal, anti-normal, radial, and anti-radial burns. Use <strong>REFUEL</strong> to add propellant.</li>
+    </ul>
+
+    <h2>Controls</h2>
+    <table>
+        <tr><th>Action</th><th>Control</th></tr>
+        <tr><td>Open menu</td><td>MENU</td></tr>
+        <tr><td>Launch</td><td>LAUNCH</td></tr>
+        <tr><td>Pause / Resume</td><td>PAUSE</td></tr>
+        <tr><td>Reset mission</td><td>RESET</td></tr>
+        <tr><td>Time warp</td><td>SPEED (1x → 1000x)</td></tr>
+        <tr><td>Zoom</td><td>ZOOM IN / ZOOM OUT / AUTO ZOOM</td></tr>
+        <tr><td>Camera</td><td>FOLLOW ROCKET / CENTER EARTH</td></tr>
+        <tr><td>Pitch (manual)</td><td>W / S or ↑ PITCH UP / ↓ PITCH DOWN</td></tr>
+        <tr><td>Orbital burns</td><td>Hold PROGRADE, RETROGRADE, NORMAL, etc.</td></tr>
+    </table>
+
+    <h2>Telemetry</h2>
+    <p>Real-time data: T+, stage, altitude, downrange, velocity (vertical/horizontal), acceleration, Max Q, dynamic pressure, drag coefficient, Mach, mass, propellant, thrust, pitch, gimbal, turn rate, apoapsis, periapsis.</p>
+
+    <h2>Physics & model</h2>
+    <ul>
+        <li><strong>Orbital mechanics</strong> — Two-body problem, vis-viva, Kepler. Symplectic Euler integration.</li>
+        <li><strong>Atmosphere</strong> — US Standard Atmosphere 1976, 7 layers, geopotential altitude.</li>
+        <li><strong>Drag</strong> — Velocity-relative, Mach-dependent drag coefficient (subsonic → transonic → supersonic → hypersonic).</li>
+        <li><strong>Rocket</strong> — Falcon 9–like: two stages, variable thrust (SL/vac), variable Isp, gimbal dynamics.</li>
+    </ul>
+
+    <h2>Guidance (Guided launch)</h2>
+    <p>Closed-loop, priority-based. In atmosphere: vertical ascent → gravity turn, Max-Q protection, turn-rate limits. In vacuum: raise apoapsis, keep periapsis safe, circularize at target altitude.</p>
+
+    <p class="muted">For more detail, see the project README on (a star would be appreciated if you like it!) <a href="https://github.com/donutTheJedi" target="_blank" rel="noopener noreferrer">GitHub</a>.</p>
+
+    <p style="margin-top: 32px;"><a href="index.html" class="back">← Back to Simulator</a></p>
+</body>
+</html>

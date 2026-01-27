@@ -32,10 +32,17 @@ body {
     height: 100vh;
 }
 
-#github-link {
+#top-links {
     position: fixed;
     top: 20px;
     right: calc(20px + 250px + 10px); /* events right (20px) + events max-width (250px) + buffer (10px) */
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    z-index: 1000;
+}
+
+#top-links .top-link {
     width: 32px;
     height: 32px;
     display: flex;
@@ -47,21 +54,20 @@ body {
     color: #0f0;
     text-decoration: none;
     transition: all 0.2s ease;
-    z-index: 1000;
 }
 
-#github-link:hover {
+#top-links .top-link:hover {
     background: rgba(0, 255, 0, 0.1);
     border-color: #0ff;
     color: #0ff;
     transform: scale(1.1);
 }
 
-#github-link:active {
+#top-links .top-link:active {
     transform: scale(0.95);
 }
 
-#github-link svg {
+#top-links .top-link svg {
     width: 20px;
     height: 20px;
 }
@@ -723,7 +729,7 @@ button:disabled {
     /* Hide controls and other panels by default on mobile - they'll be in the slide-in panel */
     /* Keep telemetry, events, t-minus display, quick actions, and burn controls visible */
     #controls,
-    #github-link,
+    #top-links,
     #pitch-program,
     #manual-pitch-controls {
         display: none !important;
@@ -731,7 +737,7 @@ button:disabled {
     
     /* Show panels when inside mobile panel container */
     .mobile-ui-panel #controls,
-    .mobile-ui-panel #github-link,
+    .mobile-ui-panel #top-links,
     .mobile-ui-panel #pitch-program,
     .mobile-ui-panel #manual-pitch-controls {
         display: block !important;
@@ -741,8 +747,8 @@ button:disabled {
         display: flex !important;
     }
     
-    .mobile-ui-panel #github-link {
-        display: inline-flex !important;
+    .mobile-ui-panel #top-links {
+        display: flex !important;
     }
     
     /* Burn controls stay visible on mobile (not in hamburger) */
@@ -816,16 +822,20 @@ button:disabled {
         margin: 3px 0;
     }
 
-    /* GitHub link - in mobile panel */
-    #github-link {
+    /* Top links (docs, GitHub) - in mobile panel */
+    .mobile-ui-panel #top-links {
         position: static;
-        display: inline-flex !important;
-        width: 32px;
-        height: 32px;
+        display: flex !important;
         margin-bottom: 15px;
+        gap: 8px;
     }
 
-    #github-link svg {
+    .mobile-ui-panel #top-links .top-link {
+        width: 32px;
+        height: 32px;
+    }
+
+    .mobile-ui-panel #top-links .top-link svg {
         width: 18px;
         height: 18px;
     }
@@ -1100,8 +1110,8 @@ button:disabled {
         max-height: 150px;
     }
 
-    /* GitHub link - positioned next to events panel in landscape */
-    #github-link {
+    /* Top links - positioned next to events panel in landscape */
+    #top-links {
         right: calc(10px + 200px + 10px); /* events right (10px) + events max-width (200px) + buffer (10px) */
     }
 

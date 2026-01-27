@@ -506,12 +506,12 @@ function updateUIForMode() {
 // Export for use in input.js
 window.updateUIForMode = updateUIForMode;
 
-// Update GitHub logo position based on events panel width
-function updateGithubLinkPosition() {
+// Update top-links (docs, GitHub) position based on events panel width
+function updateTopLinksPosition() {
     const eventsPanel = document.getElementById('events');
-    const githubLink = document.getElementById('github-link');
+    const topLinks = document.getElementById('top-links');
     
-    if (!eventsPanel || !githubLink) return;
+    if (!eventsPanel || !topLinks) return;
     
     const eventsRect = eventsPanel.getBoundingClientRect();
     const buffer = 10; // 10px buffer
@@ -519,28 +519,27 @@ function updateGithubLinkPosition() {
     // Get the right position of the events panel
     const eventsRight = window.innerWidth - eventsRect.right;
     
-    // Position GitHub link to the left of events panel with buffer
-    githubLink.style.right = `${eventsRight + eventsRect.width + buffer}px`;
+    // Position top-links to the left of events panel with buffer
+    topLinks.style.right = `${eventsRight + eventsRect.width + buffer}px`;
 }
 
-// Initialize GitHub link positioning
-function initGithubLinkPosition() {
+// Initialize top-links positioning
+function initTopLinksPosition() {
     const eventsPanel = document.getElementById('events');
-    const githubLink = document.getElementById('github-link');
+    const topLinks = document.getElementById('top-links');
     
-    if (!eventsPanel || !githubLink) return;
+    if (!eventsPanel || !topLinks) return;
     
     // Update position initially (use requestAnimationFrame to ensure DOM is ready)
     requestAnimationFrame(() => {
-        updateGithubLinkPosition();
+        updateTopLinksPosition();
     });
     
     // Watch for changes to events panel size
     if (window.ResizeObserver) {
         const resizeObserver = new ResizeObserver(() => {
-            // Use requestAnimationFrame to batch updates
             requestAnimationFrame(() => {
-                updateGithubLinkPosition();
+                updateTopLinksPosition();
             });
         });
         resizeObserver.observe(eventsPanel);
@@ -549,7 +548,7 @@ function initGithubLinkPosition() {
     // Also update on window resize
     window.addEventListener('resize', () => {
         requestAnimationFrame(() => {
-            updateGithubLinkPosition();
+            updateTopLinksPosition();
         });
     });
 }
@@ -612,7 +611,7 @@ function initMobileUI() {
     const mobilePanel = document.getElementById('mobile-ui-panel');
     const controls = document.getElementById('controls');
     const quickActions = document.getElementById('quick-actions');
-    const githubLink = document.getElementById('github-link');
+    const topLinks = document.getElementById('top-links');
     const pitchProgram = document.getElementById('pitch-program');
     const manualPitchControls = document.getElementById('manual-pitch-controls');
     const burnControls = document.getElementById('burn-controls');
@@ -633,8 +632,8 @@ function initMobileUI() {
         if (controls && controlsContainer && !controlsContainer.contains(controls)) {
             controlsContainer.appendChild(controls);
         }
-        if (githubLink && githubContainer && !githubContainer.contains(githubLink)) {
-            githubContainer.appendChild(githubLink);
+        if (topLinks && githubContainer && !githubContainer.contains(topLinks)) {
+            githubContainer.appendChild(topLinks);
         }
         if (pitchProgram && pitchContainer && !pitchContainer.contains(pitchProgram)) {
             pitchContainer.appendChild(pitchProgram);
@@ -654,8 +653,8 @@ function initMobileUI() {
         if (controls && !body.contains(controls)) {
             body.appendChild(controls);
         }
-        if (githubLink && !body.contains(githubLink)) {
-            body.appendChild(githubLink);
+        if (topLinks && !body.contains(topLinks)) {
+            body.appendChild(topLinks);
         }
         if (pitchProgram && !body.contains(pitchProgram)) {
             body.appendChild(pitchProgram);
@@ -714,7 +713,7 @@ function init() {
     resetGuidance();
     initInput();
     initMenu();
-    initGithubLinkPosition();
+    initTopLinksPosition();
     initMobileUI();
     showMenu(); // Show menu on startup
     updateTelemetry();
