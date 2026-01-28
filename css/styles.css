@@ -644,6 +644,50 @@ button:disabled {
     font-style: italic;
 }
 
+/* Settings hamburger menu */
+.settings-hamburger-container {
+    margin-top: 15px;
+    border-top: 1px solid #333;
+    padding-top: 15px;
+}
+
+.settings-hamburger-btn {
+    width: 100%;
+    background: rgba(0, 255, 255, 0.1);
+    border: 1px solid #0ff;
+    color: #0ff;
+    padding: 10px 15px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background 0.2s;
+}
+
+.settings-hamburger-btn:hover {
+    background: rgba(0, 255, 255, 0.2);
+}
+
+.settings-hamburger-btn .hamburger-icon {
+    font-size: 14px;
+    transition: transform 0.2s;
+}
+
+.settings-hamburger-btn.active .hamburger-icon {
+    transform: rotate(90deg);
+}
+
+.settings-content {
+    margin-top: 10px;
+    padding: 15px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid #333;
+    border-radius: 4px;
+}
+
 /* Manual Pitch Controls */
 #manual-pitch-controls {
     position: fixed;

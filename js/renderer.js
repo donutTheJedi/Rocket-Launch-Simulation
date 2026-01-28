@@ -1,6 +1,7 @@
 import { G, EARTH_MASS, EARTH_RADIUS, KARMAN_LINE, ROCKET_CONFIG } from './constants.js';
 import { state, getAltitude } from './state.js';
 import { computeGuidance } from './guidance.js';
+import { calculateRocketCOG, calculateCenterOfPressure, getMachNumber, getAirspeed } from './physics.js';
 
 // Canvas and context (set by init)
 let canvas = null;
@@ -558,35 +559,46 @@ export function render() {
     ctx.font = '11px Courier New';
     ctx.fillText(`${metersPerPixel < 1000 ? metersPerPixel.toFixed(1) + ' m/px' : (metersPerPixel/1000).toFixed(2) + ' km/px'}`, 10, canvas.height - 10);
     
-    // Force diagram (all modes)
-    drawForceDiagram(ctx, canvas);
+    // Draw diagrams - show expanded version if expanded, otherwise show normal version
+    if (state.expandedDiagram === 'forces') {
+        drawForceDiagram(ctx, canvas, true);
+    } else {
+        drawForceDiagram(ctx, canvas, false);
+    }
+    
+    if (state.expandedDiagram === 'rocket') {
+        drawRocketDiagram(ctx, canvas, true);
+    } else {
+        drawRocketDiagram(ctx, canvas, false);
+    }
 }
 
 // Draw force diagram in top right, beneath Mission Events (position updates with events panel height)
-function drawForceDiagram(ctx, canvas) {
-    const diagramSize = 120;
+function drawForceDiagram(ctx, canvas, expanded = false) {
+    const diagramSize = expanded ? 300 : 120; // Larger when expanded
     const gap = 10;
     const rightMargin = 20;
     
     const eventsEl = document.getElementById('events');
     const top = eventsEl ? eventsEl.getBoundingClientRect().bottom + gap : 20 + 320 + gap;
     
-    const centerX = canvas.width - rightMargin - diagramSize / 2;
-    const centerY = top + diagramSize / 2;
-    const radius = 40;
+    // If expanded, center it on screen
+    const centerX = expanded ? canvas.width / 2 : canvas.width - rightMargin - diagramSize / 2;
+    const centerY = expanded ? canvas.height / 2 : top + diagramSize / 2;
+    const radius = expanded ? 100 : 40;
     
     // Background
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillStyle = expanded ? 'rgba(0, 0, 0, 0.9)' : 'rgba(0, 0, 0, 0.7)';
     ctx.fillRect(centerX - diagramSize/2, centerY - diagramSize/2, diagramSize, diagramSize);
     ctx.strokeStyle = '#0ff';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = expanded ? 2 : 1;
     ctx.strokeRect(centerX - diagramSize/2, centerY - diagramSize/2, diagramSize, diagramSize);
     
     // Title
     ctx.fillStyle = '#0ff';
-    ctx.font = '10px Courier New';
+    ctx.font = expanded ? '14px Courier New' : '10px Courier New';
     ctx.textAlign = 'center';
-    ctx.fillText('FORCES', centerX, centerY - diagramSize/2 + 12);
+    ctx.fillText('FORCES' + (expanded ? ' (Click to close)' : ' (Click to expand)'), centerX, centerY - diagramSize/2 + (expanded ? 18 : 12));
     
     // Draw reference circle
     ctx.strokeStyle = '#555';
@@ -603,21 +615,26 @@ function drawForceDiagram(ctx, canvas) {
     
     // Draw force vectors
     const arrowLength = radius * 0.8;
-    const arrowHeadSize = 6;
+    const arrowHeadSize = expanded ? 10 : 6;
     
     // Gravity (red, pointing down)
     if (state.forceVectors.gravity.x !== 0 || state.forceVectors.gravity.y !== 0) {
-        drawForceVector(ctx, centerX, centerY, state.forceVectors.gravity, arrowLength, arrowHeadSize, '#f00', 'G');
+        drawForceVector(ctx, centerX, centerY, state.forceVectors.gravity, arrowLength, arrowHeadSize, '#f00', 'G', expanded);
     }
     
     // Thrust (green, pointing along thrust direction)
     if (state.forceVectors.thrust.x !== 0 || state.forceVectors.thrust.y !== 0) {
-        drawForceVector(ctx, centerX, centerY, state.forceVectors.thrust, arrowLength, arrowHeadSize, '#0f0', 'T');
+        drawForceVector(ctx, centerX, centerY, state.forceVectors.thrust, arrowLength, arrowHeadSize, '#0f0', 'T', expanded);
     }
     
     // Drag (yellow, pointing opposite to velocity)
     if (state.forceVectors.drag.x !== 0 || state.forceVectors.drag.y !== 0) {
-        drawForceVector(ctx, centerX, centerY, state.forceVectors.drag, arrowLength, arrowHeadSize, '#ff0', 'D');
+        drawForceVector(ctx, centerX, centerY, state.forceVectors.drag, arrowLength, arrowHeadSize, '#ff0', 'D', expanded);
+    }
+    
+    // Aerodynamic force (cyan, total normal + axial)
+    if (state.forceVectors.aero.x !== 0 || state.forceVectors.aero.y !== 0) {
+        drawForceVector(ctx, centerX, centerY, state.forceVectors.aero, arrowLength, arrowHeadSize, '#0ff', 'A', expanded);
     }
     
     ctx.textAlign = 'left'; // Reset text alignment
@@ -625,7 +642,7 @@ function drawForceDiagram(ctx, canvas) {
 
 // Draw a single force vector arrow
 // Note: direction is in world coordinates (Y up), but canvas has Y down, so flip Y
-function drawForceVector(ctx, x, y, direction, length, headSize, color, label) {
+function drawForceVector(ctx, x, y, direction, length, headSize, color, label, expanded = false) {
     // Flip Y component for screen coordinates (canvas Y increases downward)
     const screenDirX = direction.x;
     const screenDirY = -direction.y;
@@ -658,10 +675,235 @@ function drawForceVector(ctx, x, y, direction, length, headSize, color, label) {
     
     // Draw label near arrowhead
     ctx.fillStyle = color;
-    ctx.font = '9px Courier New';
+    ctx.font = expanded ? '12px Courier New' : '9px Courier New';
     ctx.textAlign = 'center';
-    const labelX = endX + screenDirX * 8;
-    const labelY = endY + screenDirY * 8;
-    ctx.fillText(label, labelX, labelY + 3);
+    const labelX = endX + screenDirX * (expanded ? 12 : 8);
+    const labelY = endY + screenDirY * (expanded ? 12 : 8);
+    ctx.fillText(label, labelX, labelY + (expanded ? 4 : 3));
+}
+
+// Draw rocket diagram showing COG, CP, and force vectors at proper locations
+function drawRocketDiagram(ctx, canvas, expanded = false) {
+    const diagramWidth = expanded ? 300 : 120;
+    const diagramHeight = expanded ? 450 : 180; // Taller rectangle
+    const gap = 10;
+    const rightMargin = 20;
+    
+    const eventsEl = document.getElementById('events');
+    const forceDiagramTop = eventsEl ? eventsEl.getBoundingClientRect().bottom + gap : 20 + 320 + gap;
+    const top = expanded ? (canvas.height - diagramHeight) / 2 : forceDiagramTop + 120 + gap;
+    
+    // If expanded, center it on screen
+    const centerX = expanded ? canvas.width / 2 : canvas.width - rightMargin - diagramWidth / 2;
+    const centerY = expanded ? canvas.height / 2 : top + diagramHeight / 2;
+    
+    // Background
+    ctx.fillStyle = expanded ? 'rgba(0, 0, 0, 0.9)' : 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(centerX - diagramWidth/2, centerY - diagramHeight/2, diagramWidth, diagramHeight);
+    ctx.strokeStyle = '#0ff';
+    ctx.lineWidth = expanded ? 2 : 1;
+    ctx.strokeRect(centerX - diagramWidth/2, centerY - diagramHeight/2, diagramWidth, diagramHeight);
+    
+    // Title
+    ctx.fillStyle = '#0ff';
+    ctx.font = expanded ? '14px Courier New' : '10px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('ROCKET' + (expanded ? ' (Click to close)' : ' (Click to expand)'), centerX, centerY - diagramHeight/2 + (expanded ? 18 : 12));
+    
+    // Get rocket data
+    const cogData = calculateRocketCOG();
+    let rocketLength = cogData.rocketLength;
+    const cogPosition = cogData.cog; // From rocket bottom
+    
+    if (rocketLength <= 0) return; // No rocket to draw
+    
+    // Calculate CP position (need Mach number)
+    let cpPosition = cogPosition; // Default to COG if we can't calculate
+    const altitude = getAltitude();
+    if (altitude < 70000) {
+        const { airspeed } = getAirspeed();
+        if (airspeed > 1e-3) {
+            const mach = getMachNumber(airspeed, altitude);
+            cpPosition = calculateCenterOfPressure(mach, rocketLength);
+        }
+    }
+    
+    // Scale rocket to fit in diagram (leave margins)
+    // Use more of the height for a longer, thinner rocket
+    const maxRocketHeight = diagramHeight * 0.75; // Use 75% of diagram height
+    const scale = maxRocketHeight / rocketLength;
+    const rocketDisplayLength = rocketLength * scale;
+    // Make rocket thinner - reduced width multiplier
+    const rocketDisplayWidth = Math.max(expanded ? 1.5 : 1, ROCKET_CONFIG.stages[0].diameter * scale * (expanded ? 4 : 3)); // Much thinner body
+    
+    // Calculate positions along rocket (from bottom, in rocket-local coordinates)
+    const cogFromBottom = cogPosition / rocketLength; // Fraction from bottom (0-1)
+    const cpFromBottom = cpPosition / rocketLength;
+    
+    // Calculate gimbal point position
+    let gimbalFromBottom = 0; // Default to bottom
+    if (state.currentStage < ROCKET_CONFIG.stages.length) {
+        const stage = ROCKET_CONFIG.stages[state.currentStage];
+        const gimbalPosition = stage.gimbalPoint; // From stage bottom
+        let gimbalFromRocketBottom = gimbalPosition;
+        if (state.currentStage === 1) {
+            gimbalFromRocketBottom += ROCKET_CONFIG.stages[0].length;
+        }
+        gimbalFromBottom = gimbalFromRocketBottom / rocketLength;
+    }
+    
+    // Save context for rotation
+    ctx.save();
+    
+    // Translate to center and rotate by rocket angle
+    // Rocket angle: 0 = pointing up, positive = rotated clockwise (east)
+    ctx.translate(centerX, centerY);
+    ctx.rotate(state.rocketAngle);
+    
+    // Rocket coordinates: bottom at (0, +length/2), top at (0, -length/2)
+    const rocketHalfLength = rocketDisplayLength / 2;
+    const rocketHalfWidth = rocketDisplayWidth / 2;
+    
+    // Draw rocket body - simple light grey tube
+    const bodyTop = -rocketHalfLength * 0.8; // Body starts 20% from top
+    const bodyBottom = rocketHalfLength * 0.8; // Body ends 20% from bottom
+    const bodyHeight = bodyBottom - bodyTop;
+    
+    // Draw light grey body tube (darker than main simulation)
+    ctx.fillStyle = '#b0b0b0'; // Light grey body
+    ctx.fillRect(-rocketHalfWidth, bodyTop, rocketDisplayWidth, bodyHeight);
+    
+    // Add subtle outline
+    ctx.strokeStyle = '#999';
+    ctx.lineWidth = expanded ? 1.5 : 1;
+    ctx.strokeRect(-rocketHalfWidth, bodyTop, rocketDisplayWidth, bodyHeight);
+    
+    // Draw nose cone (red, matching main simulation)
+    if (!state.fairingJettisoned) {
+        const noseBaseY = bodyTop;
+        const noseTipY = -rocketHalfLength;
+        
+        ctx.fillStyle = '#d33'; // Red nose
+        ctx.beginPath();
+        ctx.moveTo(-rocketHalfWidth, noseBaseY);
+        ctx.lineTo(0, noseTipY);
+        ctx.lineTo(rocketHalfWidth, noseBaseY);
+        ctx.closePath();
+        ctx.fill();
+        
+        ctx.strokeStyle = '#a00';
+        ctx.lineWidth = expanded ? 1.5 : 1;
+        ctx.stroke();
+    }
+    
+    // Calculate marker positions along rocket axis (Y coordinate in rotated frame)
+    // Bottom is at +rocketHalfLength, top is at -rocketHalfLength
+    const cogY = rocketHalfLength - (cogFromBottom * rocketDisplayLength);
+    const cpY = rocketHalfLength - (cpFromBottom * rocketDisplayLength);
+    const gimbalY = rocketHalfLength - (gimbalFromBottom * rocketDisplayLength);
+    
+    // Draw COG marker
+    const markerSize = expanded ? 5 : 3;
+    ctx.fillStyle = '#0f0'; // Green for COG
+    ctx.beginPath();
+    ctx.arc(0, cogY, markerSize, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#0f0';
+    ctx.lineWidth = expanded ? 2 : 1;
+    // Draw line perpendicular to rocket through COG
+    const markerLineOffset = expanded ? 12 : 8;
+    ctx.beginPath();
+    ctx.moveTo(-rocketHalfWidth - markerLineOffset, cogY);
+    ctx.lineTo(rocketHalfWidth + markerLineOffset, cogY);
+    ctx.stroke();
+    
+    // Draw CP marker
+    ctx.fillStyle = '#0ff'; // Cyan for CP
+    ctx.beginPath();
+    ctx.arc(0, cpY, markerSize, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#0ff';
+    ctx.lineWidth = expanded ? 2 : 1;
+    // Draw line perpendicular to rocket through CP
+    ctx.beginPath();
+    ctx.moveTo(-rocketHalfWidth - markerLineOffset, cpY);
+    ctx.lineTo(rocketHalfWidth + markerLineOffset, cpY);
+    ctx.stroke();
+    
+    // Draw moment arm line (dashed) between COG and CP if aerodynamic forces enabled
+    const aeroForcesEnabled = state.settings.enableAerodynamicForces && 
+                               state.settings.controlMode === 'gimbal';
+    if (aeroForcesEnabled && Math.abs(cpY - cogY) > 2) {
+        ctx.strokeStyle = '#888';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 2]);
+        ctx.beginPath();
+        ctx.moveTo(0, cogY);
+        ctx.lineTo(0, cpY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+    
+    // Calculate screen coordinates BEFORE restoring context
+    // We need to transform points from rotated coordinate system to screen coordinates
+    // Points are at (0, y) in rotated frame (rocket-local coordinates)
+    const cosAngle = Math.cos(state.rocketAngle);
+    const sinAngle = Math.sin(state.rocketAngle);
+    
+    // Transform from rotated coords (0, cogY) to screen coords
+    // After translate(centerX, centerY) and rotate(angle), a point at (x_rot, y_rot)
+    // appears at: (centerX + x_rot*cos - y_rot*sin, centerY + x_rot*sin + y_rot*cos)
+    // For our case, x_rot = 0, so:
+    const cogScreenX = centerX - cogY * sinAngle;
+    const cogScreenY = centerY + cogY * cosAngle;
+    
+    const cpScreenX = centerX - cpY * sinAngle;
+    const cpScreenY = centerY + cpY * cosAngle;
+    
+    const gimbalScreenX = centerX - gimbalY * sinAngle;
+    const gimbalScreenY = centerY + gimbalY * cosAngle;
+    
+    // Restore context before drawing force vectors (they need to be in screen coordinates)
+    ctx.restore();
+    
+    // Draw labels (in screen coordinates, positioned perpendicular to rocket)
+    ctx.fillStyle = '#0f0';
+    ctx.font = expanded ? '11px Courier New' : '8px Courier New';
+    ctx.textAlign = 'right';
+    // Position labels perpendicular to rocket (to the left side)
+    // Perpendicular vector: rotate rocket direction 90 degrees counterclockwise
+    const perpX = -sinAngle; // Perpendicular X component
+    const perpY = -cosAngle; // Perpendicular Y component
+    const labelOffset = expanded ? 18 : 12; // Distance from rocket
+    ctx.fillText('COG', cogScreenX + perpX * labelOffset, cogScreenY - perpY * labelOffset + (expanded ? 4 : 3));
+    
+    ctx.fillStyle = '#0ff';
+    ctx.fillText('CP', cpScreenX + perpX * labelOffset, cpScreenY - perpY * labelOffset + (expanded ? 4 : 3));
+    
+    // Draw force vectors at their proper locations (in screen coordinates)
+    const arrowLength = expanded ? 40 : 25;
+    const arrowHeadSize = expanded ? 6 : 4;
+    
+    // Gravity at COG (red, pointing down)
+    if (state.forceVectors.gravity.x !== 0 || state.forceVectors.gravity.y !== 0) {
+        drawForceVector(ctx, cogScreenX, cogScreenY, state.forceVectors.gravity, arrowLength, arrowHeadSize, '#f00', 'G', expanded);
+    }
+    
+    // Thrust at gimbal point (green)
+    if (state.forceVectors.thrust.x !== 0 || state.forceVectors.thrust.y !== 0) {
+        drawForceVector(ctx, gimbalScreenX, gimbalScreenY, state.forceVectors.thrust, arrowLength, arrowHeadSize, '#0f0', 'T', expanded);
+    }
+    
+    // Drag at COG (yellow)
+    if (state.forceVectors.drag.x !== 0 || state.forceVectors.drag.y !== 0) {
+        drawForceVector(ctx, cogScreenX, cogScreenY, state.forceVectors.drag, arrowLength, arrowHeadSize, '#ff0', 'D', expanded);
+    }
+    
+    // Aerodynamic force at CP (cyan) - only if enabled
+    if (aeroForcesEnabled && (state.forceVectors.aero.x !== 0 || state.forceVectors.aero.y !== 0)) {
+        drawForceVector(ctx, cpScreenX, cpScreenY, state.forceVectors.aero, arrowLength, arrowHeadSize, '#0ff', 'A', expanded);
+    }
+    
+    ctx.textAlign = 'left'; // Reset text alignment
 }
 

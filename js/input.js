@@ -329,6 +329,16 @@ export function initInput() {
                 : 'Control target pitch angle. Gimbal adjusts automatically.';
         }
         
+        // Show/hide aerodynamic forces setting (only in gimbal mode)
+        const aeroForcesSetting = document.getElementById('aero-forces-setting');
+        const aeroForcesDescription = document.getElementById('aero-forces-description');
+        if (aeroForcesSetting) {
+            aeroForcesSetting.style.display = isGimbalMode ? 'flex' : 'none';
+        }
+        if (aeroForcesDescription) {
+            aeroForcesDescription.style.display = isGimbalMode ? 'block' : 'none';
+        }
+        
         // Update manual control UI labels
         const controlTitle = document.getElementById('manual-control-title');
         const pitchDisplay = document.getElementById('manual-pitch-display');
@@ -348,6 +358,49 @@ export function initInput() {
         if (pitchDownBtn) {
             pitchDownBtn.innerHTML = isGimbalMode ? '↓ GIMBAL DOWN<br>(S Key)' : '↓ PITCH DOWN<br>(S Key)';
         }
+    }
+    
+    // Aerodynamic forces toggle handlers
+    const aeroForcesOffBtn = document.getElementById('aero-forces-off-btn');
+    const aeroForcesOnBtn = document.getElementById('aero-forces-on-btn');
+    
+    function updateAerodynamicForcesUI() {
+        const isEnabled = state.settings.enableAerodynamicForces;
+        if (aeroForcesOffBtn) {
+            aeroForcesOffBtn.classList.toggle('active', !isEnabled);
+        }
+        if (aeroForcesOnBtn) {
+            aeroForcesOnBtn.classList.toggle('active', isEnabled);
+        }
+    }
+    
+    if (aeroForcesOffBtn) {
+        aeroForcesOffBtn.addEventListener('click', () => {
+            state.settings.enableAerodynamicForces = false;
+            updateAerodynamicForcesUI();
+        });
+    }
+    
+    if (aeroForcesOnBtn) {
+        aeroForcesOnBtn.addEventListener('click', () => {
+            state.settings.enableAerodynamicForces = true;
+            updateAerodynamicForcesUI();
+        });
+    }
+    
+    // Initialize aerodynamic forces UI
+    updateAerodynamicForcesUI();
+    
+    // Settings hamburger toggle
+    const settingsToggleBtn = document.getElementById('settings-toggle-btn');
+    const settingsContent = document.getElementById('settings-content');
+    
+    if (settingsToggleBtn && settingsContent) {
+        settingsToggleBtn.addEventListener('click', () => {
+            const isVisible = settingsContent.style.display !== 'none';
+            settingsContent.style.display = isVisible ? 'none' : 'block';
+            settingsToggleBtn.classList.toggle('active', !isVisible);
+        });
     }
     
     if (controlTurnRateBtn) {
@@ -371,6 +424,65 @@ export function initInput() {
     
     // Initialize UI state
     updateControlModeUI();
+    
+    // Add click handler for diagram expansion
+    const diagramCanvas = getCanvas();
+    if (diagramCanvas) {
+        diagramCanvas.addEventListener('click', (e) => {
+            const rect = diagramCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            // Check if click is on force diagram
+            const diagramSize = state.expandedDiagram === 'forces' ? 300 : 120;
+            const gap = 10;
+            const rightMargin = 20;
+            const eventsEl = document.getElementById('events');
+            const top = eventsEl ? eventsEl.getBoundingClientRect().bottom + gap : 20 + 320 + gap;
+            const centerX = state.expandedDiagram === 'forces' ? diagramCanvas.width / 2 : diagramCanvas.width - rightMargin - diagramSize / 2;
+            const centerY = state.expandedDiagram === 'forces' ? diagramCanvas.height / 2 : top + diagramSize / 2;
+            
+            const forceDiagramLeft = centerX - diagramSize / 2;
+            const forceDiagramRight = centerX + diagramSize / 2;
+            const forceDiagramTop = centerY - diagramSize / 2;
+            const forceDiagramBottom = centerY + diagramSize / 2;
+            
+            if (x >= forceDiagramLeft && x <= forceDiagramRight && 
+                y >= forceDiagramTop && y <= forceDiagramBottom) {
+                // Toggle force diagram expansion
+                if (state.expandedDiagram === 'forces') {
+                    state.expandedDiagram = null;
+                } else {
+                    state.expandedDiagram = 'forces';
+                }
+                return;
+            }
+            
+            // Check if click is on rocket diagram
+            const diagramWidth = state.expandedDiagram === 'rocket' ? 300 : 120;
+            const diagramHeight = state.expandedDiagram === 'rocket' ? 450 : 180;
+            const forceDiagramTopPos = eventsEl ? eventsEl.getBoundingClientRect().bottom + gap : 20 + 320 + gap;
+            const rocketTop = state.expandedDiagram === 'rocket' ? (diagramCanvas.height - diagramHeight) / 2 : forceDiagramTopPos + 120 + gap;
+            const rocketCenterX = state.expandedDiagram === 'rocket' ? diagramCanvas.width / 2 : diagramCanvas.width - rightMargin - diagramWidth / 2;
+            const rocketCenterY = state.expandedDiagram === 'rocket' ? diagramCanvas.height / 2 : rocketTop + diagramHeight / 2;
+            
+            const rocketDiagramLeft = rocketCenterX - diagramWidth / 2;
+            const rocketDiagramRight = rocketCenterX + diagramWidth / 2;
+            const rocketDiagramTop = rocketCenterY - diagramHeight / 2;
+            const rocketDiagramBottom = rocketCenterY + diagramHeight / 2;
+            
+            if (x >= rocketDiagramLeft && x <= rocketDiagramRight && 
+                y >= rocketDiagramTop && y <= rocketDiagramBottom) {
+                // Toggle rocket diagram expansion
+                if (state.expandedDiagram === 'rocket') {
+                    state.expandedDiagram = null;
+                } else {
+                    state.expandedDiagram = 'rocket';
+                }
+                return;
+            }
+        });
+    }
 }
 
 

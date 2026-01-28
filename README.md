@@ -2,14 +2,13 @@
 
 
 
-**Current Version:** [View Current Version](https://github.com/donutTheJedi/Rocket)  
+**🌐 Live Demo:**  
+**Current Live Demo:** [https://www.donutthejedi.com/](https://www.donutthejedi.com/)  
 
 [![Hacker News](https://img.shields.io/badge/Hacker%20News-Front%20Page-orange?logo=ycombinator)](https://news.ycombinator.com/item?id=46557879)
 
 A realistic 2D physics simulation of orbital mechanics and rocket launches from Earth. Experience the challenge of launching a Falcon 9-like rocket into orbit with accurate physics, atmospheric modeling, and an intelligent closed-loop guidance system.
 
-**🌐 Live Demo:**  
-**Current Live Demo:** [https://www.donutthejedi.com/](https://www.donutthejedi.com/)  
 
 ![Rocket Simulation](https://img.shields.io/badge/Status-Active-success)
 ![License](https://img.shields.io/badge/License-MIT-blue)
@@ -34,6 +33,9 @@ A realistic 2D physics simulation of orbital mechanics and rocket launches from 
 - **Variable Thrust**: Sea-level to vacuum thrust and ISP variation
 - **Atmospheric Drag**: Velocity-relative drag calculations accounting for Earth's rotation
 - **Mach-Dependent Drag Coefficient**: Realistic transonic drag modeling with drag coefficient variation from subsonic through hypersonic regimes
+- **Aerodynamic Forces**: Angle of attack modeling with normal and axial forces, center of pressure calculations, and aerodynamic torque
+- **Rotational Dynamics**: Gimbal-based thrust vector control with realistic actuator dynamics and aerodynamic stability
+- **Dynamic Center of Gravity**: Real-time COG calculation based on fuel consumption and stage separation
 - **Symplectic Euler Integration**: Energy-conserving numerical integration for stable orbits
 - **Adaptive Sub-stepping**: Variable timestep for accuracy in different flight phases
 
@@ -49,7 +51,10 @@ A realistic 2D physics simulation of orbital mechanics and rocket launches from 
 - **Multiple Strategies**: Direct ascent and traditional circularization approaches
 
 ### User Interface
-- **Real-Time Telemetry**: Altitude, velocity, orbital parameters, Mach number, drag coefficient, and more
+- **Real-Time Telemetry**: Altitude, velocity, orbital parameters, Mach number, drag coefficient, COG, CoP, and more
+- **Force Diagram**: Visual representation of all forces acting on the rocket (gravity, thrust, drag, aerodynamic)
+- **Rocket Diagram**: 2D side view showing rocket orientation, COG, CP positions, and force vectors at their attachment points
+- **Interactive Diagrams**: Click to expand force and rocket diagrams for detailed viewing
 - **Mission Events**: Timeline of important mission milestones
 - **Orbital Visualization**: Real-time orbit prediction and visualization
 - **Time Warp**: Speed up simulation up to 1000x
@@ -89,6 +94,13 @@ A realistic 2D physics simulation of orbital mechanics and rocket launches from 
 Take full control of your rocket's pitch angle while receiving real-time guidance recommendations.
 
 - **Pitch Control**: W/S keys or on-screen buttons
+- **Control Modes**: 
+  - **Turn Rate Mode**: Control target pitch angle, gimbal adjusts automatically
+  - **Gimbal Mode**: Direct gimbal control for advanced users
+- **Aerodynamic Forces**: Optional aerodynamic forces simulation (available in gimbal mode)
+  - Normal force and torque from angle of attack
+  - Center of pressure visualization
+  - Realistic stability effects
 - **Guidance Recommendations**: See what the guidance system suggests (displayed in cyan)
 - **Learning Tool**: Compare your decisions with optimal guidance
 - **Rate Limited**: Realistic 2°/s pitch rate limit
@@ -124,13 +136,19 @@ Spawn directly in orbit to practice orbital mechanics without going through laun
 | Auto Zoom | **AUTO ZOOM** button (toggle) |
 | Camera Mode | **FOLLOW ROCKET** / **CENTER EARTH** button |
 
-### Manual Control Mode
+### Manual Control Mode Controls
 | Action | Control |
 |--------|---------|
 | Pitch Up | **W** key or **↑ PITCH UP** button |
 | Pitch Down | **S** key or **↓ PITCH DOWN** button |
 | Throttle Up | **↑** arrow key |
 | Throttle Down | **↓** arrow key |
+| Open Settings | Click **☰ Settings** hamburger button (under Manual Control section) |
+| Toggle Control Mode | **Turn Rate** / **Gimbal** buttons (in Settings) |
+| Toggle Aerodynamic Forces | **Off** / **On** buttons (in Settings, Gimbal mode only) |
+| Open Settings | Click **☰ Settings** hamburger button (under Manual Control section) |
+| Toggle Control Mode | **Turn Rate** / **Gimbal** buttons (in Settings) |
+| Toggle Aerodynamic Forces | **Off** / **On** buttons (in Settings, Gimbal mode only) |
 
 ### Orbital Mode
 | Action | Control |
@@ -165,6 +183,25 @@ Spawn directly in orbit to practice orbital mechanics without going through laun
 - **Mass Flow Rate**: Tsiolkovsky rocket equation
 - **Drag Model**: Velocity-relative drag with rotating atmosphere
 - **Mach-Dependent Drag Coefficient**: Realistic Cd(Mach) curves based on Saturn V wind tunnel data, modeling subsonic, transonic drag rise, supersonic, and hypersonic regimes
+- **Dynamic Center of Gravity**: Real-time COG calculation accounting for fuel consumption and stage separation
+- **Gimbal Dynamics**: Physical thrust vector control with rate limits and maximum deflection constraints
+- **Rotational Dynamics**: Angular velocity and orientation tracking with aerodynamic damping
+
+#### Aerodynamic Forces (Optional - Gimbal Mode)
+- **Angle of Attack Calculation**: Computes AOA between rocket body axis and airspeed vector
+- **Center of Pressure**: Mach-dependent CP position calculation
+  - Subsonic (M < 0.8): CP at 50% of rocket length
+  - Transonic (M 0.8-1.2): CP shifts aft from 50% to 60%
+  - Supersonic (M > 1.2): CP at 60% of rocket length
+- **Normal Force Coefficient**: 
+  - Subsonic: CN_alpha = 2 / sqrt(1 - Mach²) (Prandtl-Glauert correction)
+  - Supersonic: CN_alpha = 4 / sqrt(Mach² - 1)
+  - CN = CN_alpha × AOA
+- **Aerodynamic Forces**:
+  - Normal force: Perpendicular to body axis, acts at CP
+  - Axial force: Along body axis (drag component)
+  - Aerodynamic torque: Normal force × moment arm (CP - COG)
+- **Stability**: Negative moment arm (CP < COG) provides natural stability
 
 ### Rocket Configuration
 
@@ -351,18 +388,40 @@ Implement realistic transonic drag modeling. Real rockets experience significant
 - [x] Add hypersonic regime (M > 5): stabilized ~0.20
 - [x] Display current Cd and Mach number in telemetry
 
-#### Engine Gimbal Dynamics
+#### Engine Gimbal Dynamics ✅
 Model realistic thrust vector control (TVC) with physical gimbal constraints instead of instantaneous thrust direction changes.
 
-- [ ] Add gimbal angle state (current deflection from centerline)
-- [ ] Implement gimbal rate limits (~5°/s typical for Merlin)
-- [ ] Add maximum gimbal deflection constraint (~5° for Merlin)
-- [ ] Model gimbal response lag (first-order filter)
-- [ ] Update guidance to account for gimbal authority limits
-- [ ] Visualize gimbal angle on rocket rendering
-- [ ] Add gimbal telemetry (commanded vs actual deflection)
+- [x] Add gimbal angle state (current deflection from centerline)
+- [x] Implement gimbal rate limits (~20°/s for Stage 1, ~15°/s for Stage 2)
+- [x] Add maximum gimbal deflection constraint (~5° for both stages)
+- [x] Model gimbal response lag (rate-limited actuator dynamics)
+- [x] Update guidance to account for gimbal authority limits
+- [x] Visualize gimbal angle on rocket rendering
+- [x] Add gimbal telemetry (commanded vs actual deflection)
+- [x] PD controller for gimbal command generation
+
+#### Aerodynamic Forces ✅
+Implement realistic aerodynamic forces when rocket has angle of attack.
+
+- [x] Calculate angle of attack (AOA) between body axis and airspeed vector
+- [x] Calculate center of pressure (CP) with Mach-dependent position
+- [x] Implement normal force coefficient (CN) with Prandtl-Glauert corrections
+- [x] Calculate normal and axial aerodynamic forces
+- [x] Apply aerodynamic torque based on CP-COG moment arm
+- [x] Add aerodynamic forces toggle (available in gimbal control mode)
+- [x] Visualize forces in force and rocket diagrams
+- [x] Display CoP position in telemetry
 
 ### User Experience
+
+#### Interactive Diagrams ✅
+Real-time visualization of forces and rocket state.
+
+- [x] Force diagram showing all force vectors (gravity, thrust, drag, aerodynamic)
+- [x] Rocket diagram with COG/CP markers and force vectors at attachment points
+- [x] Click-to-expand functionality for detailed viewing
+- [x] Diagrams rotate with rocket orientation
+- [x] Automatic stage separation visualization
 
 #### Telemetry Graphs & Post-Flight Review
 Add real-time plotting during flight and comprehensive post-flight analysis.
@@ -385,7 +444,7 @@ Add real-time plotting during flight and comprehensive post-flight analysis.
 
 ## ⚠️ Current Issues
 
-- **Gimbal/COG Thrust Issue**: Gimbaling and COG calculations are working correctly, but the rocket doesn't have enough thrust and is falling out of the sky around 0.75km. This appears to be related to how thrust is being applied with the new gimbal mechanics.
+- None currently reported. All major systems operational.
 
 ## 🐛 Known Limitations
 

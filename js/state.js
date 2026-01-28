@@ -49,8 +49,12 @@ export const state = {
     
     // Settings
     settings: {
-        controlMode: 'turnrate'  // 'turnrate' or 'gimbal'
+        controlMode: 'turnrate',  // 'turnrate' or 'gimbal'
+        enableAerodynamicForces: false  // Only applies in gimbal control mode
     },
+    
+    // Diagram expansion state
+    expandedDiagram: null,  // null, 'forces', or 'rocket'
     
     // Manual gimbal control (degrees, for gimbal control mode)
     manualGimbal: 0,
@@ -59,7 +63,8 @@ export const state = {
     forceVectors: {
         gravity: { x: 0, y: 0 },    // Unit vector pointing toward Earth center
         thrust: { x: 0, y: 0 },     // Unit vector along thrust direction
-        drag: { x: 0, y: 0 }         // Unit vector opposite to airspeed direction
+        drag: { x: 0, y: 0 },       // Unit vector opposite to airspeed direction
+        aero: { x: 0, y: 0 }        // Unit vector for total aerodynamic force (normal + axial)
     }
 };
 
@@ -119,8 +124,11 @@ export function initState() {
     state.forceVectors = {
         gravity: { x: 0, y: 0 },
         thrust: { x: 0, y: 0 },
-        drag: { x: 0, y: 0 }
+        drag: { x: 0, y: 0 },
+        aero: { x: 0, y: 0 }
     };
+    // Reset diagram expansion
+    state.expandedDiagram = null;
     // Note: settings are preserved across resets
     
     const eventList = document.getElementById('event-list');
@@ -195,7 +203,8 @@ export function spawnInOrbit(altitude = 500000) {
     state.forceVectors = {
         gravity: { x: 0, y: 0 },
         thrust: { x: 0, y: 0 },
-        drag: { x: 0, y: 0 }
+        drag: { x: 0, y: 0 },
+        aero: { x: 0, y: 0 }
     };
     
     const eventList = document.getElementById('event-list');

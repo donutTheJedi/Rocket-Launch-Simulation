@@ -1,7 +1,8 @@
 import { EARTH_RADIUS, EARTH_ROTATION, KARMAN_LINE, ROCKET_CONFIG, GUIDANCE_CONFIG } from './constants.js';
 import { state, initState, getAltitude, getTotalMass, resetCurrentMission, spawnInOrbit } from './state.js';
 import { getGravity, getCurrentThrust, getMassFlowRate, getAtmosphericDensity, getAirspeed, getDrag, 
-         integrateRotationalDynamics, getRocketThrustDirection, calculateCommandedGimbal } from './physics.js';
+         integrateRotationalDynamics, getRocketThrustDirection, calculateCommandedGimbal,
+         calculateAngleOfAttack, calculateAerodynamicForces, calculateAerodynamicTorque } from './physics.js';
 import { calculateOrbitalElements } from './orbital.js';
 import { computeGuidance, guidanceState, resetGuidance } from './guidance.js';
 import { addEvent } from './events.js';
@@ -97,6 +98,10 @@ function update(dt) {
     const maxSteps = 1000;
     const actualSteps = Math.min(steps, maxSteps);
     const actualStepDt = dt / actualSteps;
+    
+    // Check if aerodynamic forces are enabled (only in gimbal control mode)
+    const aeroForcesEnabled = state.settings.enableAerodynamicForces && 
+                               state.settings.controlMode === 'gimbal';
     
     for (let step = 0; step < actualSteps; step++) {
         const rStep = Math.sqrt(state.x * state.x + state.y * state.y);
@@ -244,7 +249,12 @@ function update(dt) {
         const thrustStep = getCurrentThrust(altitudeStep, throttleStep);
         
         // Integrate rotational dynamics (updates gimbal angle, angular velocity, rocket angle)
-        integrateRotationalDynamics(thrustStep, actualStepDt);
+        // Pass local reference frame for aerodynamic torque calculation (only if enabled)
+        if (aeroForcesEnabled) {
+            integrateRotationalDynamics(thrustStep, actualStepDt, localUpStep, localEastStep);
+        } else {
+            integrateRotationalDynamics(thrustStep, actualStepDt);
+        }
         
         // Get actual thrust direction based on rocket orientation and gimbal
         const thrustDirStep = getRocketThrustDirection(localUpStep, localEastStep);
@@ -262,10 +272,40 @@ function update(dt) {
         const airVxStep = state.vx - atmVxStep;
         const airVyStep = state.vy - atmVyStep;
         const airspeedStep = Math.sqrt(airVxStep * airVxStep + airVyStep * airVyStep);
-        const dragStep = getDrag(altitudeStep, airspeedStep);
-        const dragAccelStep = airspeedStep > 0 ? dragStep / mass : 0;
-        const daxStep = airspeedStep > 0 ? -dragAccelStep * airVxStep / airspeedStep : 0;
-        const dayStep = airspeedStep > 0 ? -dragAccelStep * airVyStep / airspeedStep : 0;
+        
+        // Calculate aerodynamic forces with angle of attack
+        // Only apply if enabled in settings and in gimbal control mode
+        let daxStep = 0;
+        let dayStep = 0;
+        
+        if (aeroForcesEnabled && altitudeStep < 70000 && airspeedStep > 1e-3) {
+            // Calculate rocket body axis direction
+            const bodyAxisX = Math.sin(state.rocketAngle) * localEastStep.x + Math.cos(state.rocketAngle) * localUpStep.x;
+            const bodyAxisY = Math.sin(state.rocketAngle) * localEastStep.y + Math.cos(state.rocketAngle) * localUpStep.y;
+            const bodyAxis = { x: bodyAxisX, y: bodyAxisY };
+            
+            // Calculate angle of attack
+            const aoa = calculateAngleOfAttack(bodyAxis, airVxStep, airVyStep);
+            
+            // Calculate aerodynamic forces
+            const aeroForces = calculateAerodynamicForces(
+                altitudeStep, airspeedStep, aoa, bodyAxis, airVxStep, airVyStep, 
+                localUpStep, localEastStep
+            );
+            
+            // Apply aerodynamic forces as acceleration
+            const aeroAccelX = aeroForces.F_aero_x / mass;
+            const aeroAccelY = aeroForces.F_aero_y / mass;
+            
+            daxStep = aeroAccelX;
+            dayStep = aeroAccelY;
+        } else {
+            // Fallback to simple drag for very high altitude, zero airspeed, or when aero forces disabled
+            const dragStep = getDrag(altitudeStep, airspeedStep);
+            const dragAccelStep = airspeedStep > 0 ? dragStep / mass : 0;
+            daxStep = airspeedStep > 0 ? -dragAccelStep * airVxStep / airspeedStep : 0;
+            dayStep = airspeedStep > 0 ? -dragAccelStep * airVyStep / airspeedStep : 0;
+        }
         
         const axStep = gxStep + taxStep + daxStep;
         const ayStep = gyStep + tayStep + dayStep;
@@ -303,6 +343,37 @@ function update(dt) {
         state.forceVectors.drag = { x: -airVx / airspeed, y: -airVy / airspeed };
     } else {
         state.forceVectors.drag = { x: 0, y: 0 };
+    }
+    
+    // Calculate aerodynamic force vector for force diagram
+    // Only show if aerodynamic forces are enabled
+    if (aeroForcesEnabled && altFinal < 70000 && airspeed > 1e-3) {
+        // Calculate rocket body axis direction
+        const bodyAxisX = Math.sin(state.rocketAngle) * localEastFinal.x + Math.cos(state.rocketAngle) * localUpFinal.x;
+        const bodyAxisY = Math.sin(state.rocketAngle) * localEastFinal.y + Math.cos(state.rocketAngle) * localUpFinal.y;
+        const bodyAxis = { x: bodyAxisX, y: bodyAxisY };
+        
+        // Calculate angle of attack
+        const aoa = calculateAngleOfAttack(bodyAxis, airVx, airVy);
+        
+        // Calculate aerodynamic forces
+        const aeroForces = calculateAerodynamicForces(
+            altFinal, airspeed, aoa, bodyAxis, airVx, airVy, 
+            localUpFinal, localEastFinal
+        );
+        
+        // Calculate unit vector for force diagram
+        const aeroMag = Math.sqrt(aeroForces.F_aero_x * aeroForces.F_aero_x + aeroForces.F_aero_y * aeroForces.F_aero_y);
+        if (aeroMag > 1e-6) {
+            state.forceVectors.aero = {
+                x: aeroForces.F_aero_x / aeroMag,
+                y: aeroForces.F_aero_y / aeroMag
+            };
+        } else {
+            state.forceVectors.aero = { x: 0, y: 0 };
+        }
+    } else {
+        state.forceVectors.aero = { x: 0, y: 0 };
     }
     
     // Check for stage depletion after all sub-steps

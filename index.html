@@ -57,6 +57,7 @@
             <div><span class="label">Propellant</span><span class="value" id="propellant">0%</span></div>
             <div><span class="label">Thrust</span><span class="value" id="thrust">0 kN</span></div>
             <div><span class="label">COG</span><span class="value" id="cog">0.0 m</span></div>
+            <div><span class="label">CoP</span><span class="value" id="cop">0.0 m</span></div>
             <div><span class="label">Fuel Level</span><span class="value" id="fuel-level">0.0 m</span></div>
         </div>
         <div class="section">
@@ -108,24 +109,40 @@
         </div>
         <div id="current-mode-display" class="current-mode">No mission selected</div>
         
-        <div class="menu-section settings-section">
-            <h3>Settings</h3>
-            <div class="setting-row">
-                <span class="setting-label">Control Mode:</span>
-                <div class="toggle-buttons">
-                    <button id="control-turnrate-btn" class="toggle-btn active">Turn Rate</button>
-                    <button id="control-gimbal-btn" class="toggle-btn">Gimbal</button>
-                </div>
-            </div>
-            <p class="setting-description" id="control-mode-description">
-                Control target pitch angle. Gimbal adjusts automatically.
-            </p>
-        </div>
-        
         <div class="menu-section">
             <h3>Manual Control</h3>
             <p class="menu-description">Control pitch manually (W/S keys). Guidance provides recommendations.</p>
             <button id="start-manual-btn" class="menu-start-btn">START MANUAL CONTROL</button>
+            
+            <!-- Settings hamburger menu -->
+            <div class="settings-hamburger-container">
+                <button id="settings-toggle-btn" class="settings-hamburger-btn">
+                    <span class="hamburger-icon">☰</span>
+                    <span>Settings</span>
+                </button>
+                <div id="settings-content" class="settings-content" style="display: none;">
+                    <div class="setting-row">
+                        <span class="setting-label">Control Mode:</span>
+                        <div class="toggle-buttons">
+                            <button id="control-turnrate-btn" class="toggle-btn active">Turn Rate</button>
+                            <button id="control-gimbal-btn" class="toggle-btn">Gimbal</button>
+                        </div>
+                    </div>
+                    <p class="setting-description" id="control-mode-description">
+                        Control target pitch angle. Gimbal adjusts automatically.
+                    </p>
+                    <div class="setting-row" id="aero-forces-setting" style="display: none;">
+                        <span class="setting-label">Aerodynamic Forces:</span>
+                        <div class="toggle-buttons">
+                            <button id="aero-forces-off-btn" class="toggle-btn active">Off</button>
+                            <button id="aero-forces-on-btn" class="toggle-btn">On</button>
+                        </div>
+                    </div>
+                    <p class="setting-description" id="aero-forces-description" style="display: none;">
+                        Enable aerodynamic forces (normal force and torque) when rocket has angle of attack. Only available in gimbal control mode.
+                    </p>
+                </div>
+            </div>
         </div>
         
         <div class="menu-section">

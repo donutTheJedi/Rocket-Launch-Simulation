@@ -939,22 +939,53 @@ export function updateGimbalAngle(commandedAngle, currentAngle, dt) {
  * 
  * @param {number} thrust - Current thrust (N)
  * @param {number} dt - Time step (seconds)
+ * @param {Object} localUp - Local up unit vector {x, y} (optional, for aerodynamic torque)
+ * @param {Object} localEast - Local east unit vector {x, y} (optional, for aerodynamic torque)
  * @returns {Object} { angularVelocity, rocketAngle, gimbalAngle }
  */
-export function integrateRotationalDynamics(thrust, dt) {
+export function integrateRotationalDynamics(thrust, dt, localUp = null, localEast = null) {
     // Update gimbal angle (actuator dynamics)
     const newGimbalAngle = updateGimbalAngle(state.commandedGimbal, state.gimbalAngle, dt);
     state.gimbalAngle = newGimbalAngle;
     
-    // Calculate angular acceleration
+    // Calculate angular acceleration from gimbal
     const dynamics = calculateAngularAcceleration(thrust, state.gimbalAngle);
+    let totalAngularAccel = dynamics.angularAccel;
+    
+    // Add aerodynamic torque if in atmosphere
+    const altitude = Math.sqrt(state.x * state.x + state.y * state.y) - 6.371e6;
+    if (altitude < 70000 && localUp && localEast) {
+        const { airspeed, airVx, airVy } = getAirspeed();
+        
+        if (airspeed > 1e-3) {
+            // Calculate rocket body axis direction
+            const bodyAxisX = Math.sin(state.rocketAngle) * localEast.x + Math.cos(state.rocketAngle) * localUp.x;
+            const bodyAxisY = Math.sin(state.rocketAngle) * localEast.y + Math.cos(state.rocketAngle) * localUp.y;
+            const bodyAxis = { x: bodyAxisX, y: bodyAxisY };
+            
+            // Calculate angle of attack
+            const aoa = calculateAngleOfAttack(bodyAxis, airVx, airVy);
+            
+            // Calculate aerodynamic torque
+            const aeroTorque = calculateAerodynamicTorque(
+                altitude, airspeed, aoa, bodyAxis, airVx, airVy, localUp, localEast
+            );
+            
+            // Add aerodynamic angular acceleration
+            const moiData = calculateMomentOfInertia();
+            const moi = Math.max(moiData.momentOfInertia, 1);
+            const aeroAngularAccel = aeroTorque.torque / moi;
+            
+            totalAngularAccel += aeroAngularAccel;
+        }
+    }
     
     // Integrate angular velocity: ω += α * dt
-    state.angularVelocity += dynamics.angularAccel * dt;
+    state.angularVelocity += totalAngularAccel * dt;
     
     // Add some angular damping in atmosphere (aerodynamic stability)
     // This simulates the stabilizing effect of fins/body aerodynamics
-    const altitude = Math.sqrt(state.x * state.x + state.y * state.y) - 6.371e6;
+    // Note: This is now redundant with aerodynamic torque, but kept for backward compatibility
     if (altitude < 70000) {
         const { airspeed } = getAirspeed();
         const density = getAtmosphericDensity(altitude);
@@ -974,7 +1005,7 @@ export function integrateRotationalDynamics(thrust, dt) {
         angularVelocity: state.angularVelocity,
         rocketAngle: state.rocketAngle,
         gimbalAngle: state.gimbalAngle,
-        angularAccel: dynamics.angularAccel,
+        angularAccel: totalAngularAccel,
         torque: dynamics.torque,
         momentOfInertia: dynamics.momentOfInertia
     };
@@ -1067,5 +1098,292 @@ export function calculateCommandedGimbal(targetPitchDeg, dt) {
     }
     
     return gimbalCommand;
+}
+
+/**
+ * ============================================================================
+ * AERODYNAMIC FORCES WITH ANGLE OF ATTACK
+ * ============================================================================
+ * 
+ * Implements aerodynamic forces when rocket body axis is not aligned with
+ * airspeed vector (angle of attack ≠ 0). Creates normal forces perpendicular
+ * to body axis and torques about center of gravity.
+ */
+
+/**
+ * Calculate center of pressure (CP) position from rocket bottom
+ * CP depends on geometry and Mach number
+ * 
+ * @param {number} mach - Mach number
+ * @param {number} rocketLength - Total rocket length (m)
+ * @returns {number} CP position from rocket bottom (m)
+ */
+export function calculateCenterOfPressure(mach, rocketLength) {
+    let cpFraction;
+    
+    if (mach < 0.8) {
+        // Subsonic: CP at 50% of rocket length
+        cpFraction = 0.5;
+    } else if (mach <= 1.2) {
+        // Transonic: CP shifts aft (toward tail)
+        cpFraction = 0.5 + 0.1 * (mach - 0.8) / 0.4;
+    } else {
+        // Supersonic: CP at 60% of rocket length (further aft)
+        cpFraction = 0.6;
+    }
+    
+    return cpFraction * rocketLength;
+}
+
+/**
+ * Calculate angle of attack (AOA) between rocket body axis and airspeed vector
+ * Preserves sign to determine normal force direction
+ * 
+ * @param {Object} bodyAxis - Body axis direction vector {x, y}
+ * @param {number} airVx - Airspeed x component (m/s)
+ * @param {number} airVy - Airspeed y component (m/s)
+ * @returns {number} Angle of attack in radians (signed)
+ */
+export function calculateAngleOfAttack(bodyAxis, airVx, airVy) {
+    const airspeedMag = Math.sqrt(airVx * airVx + airVy * airVy);
+    
+    // Zero airspeed = zero AOA
+    if (airspeedMag < 1e-6) {
+        return 0;
+    }
+    
+    // Normalize body axis
+    const bodyMag = Math.sqrt(bodyAxis.x * bodyAxis.x + bodyAxis.y * bodyAxis.y);
+    if (bodyMag < 1e-6) {
+        return 0;
+    }
+    
+    const bodyUnitX = bodyAxis.x / bodyMag;
+    const bodyUnitY = bodyAxis.y / bodyMag;
+    
+    // Unit airspeed vector
+    const airspeedUnitX = airVx / airspeedMag;
+    const airspeedUnitY = airVy / airspeedMag;
+    
+    // 2D cross product gives signed value
+    const cross = bodyUnitX * airspeedUnitY - bodyUnitY * airspeedUnitX;
+    const dot = bodyUnitX * airspeedUnitX + bodyUnitY * airspeedUnitY;
+    
+    // AOA = atan2(cross, dot) preserves sign
+    const aoa = Math.atan2(cross, dot);
+    
+    return aoa;
+}
+
+/**
+ * Calculate normal force coefficient derivative (CN_alpha)
+ * Force per radian of angle of attack
+ * 
+ * @param {number} mach - Mach number
+ * @returns {number} CN_alpha (1/radian)
+ */
+export function calculateNormalForceCoefficientDerivative(mach) {
+    if (mach < 0.8) {
+        // Subsonic: Prandtl-Glauert correction increases CN_alpha
+        const denominator = Math.sqrt(1 - mach * mach);
+        if (denominator < 1e-6) return 2; // Avoid division by zero
+        return 2 / denominator;
+    } else if (mach <= 1.2) {
+        // Transonic: Interpolate between subsonic and supersonic
+        const cnAlphaSubsonic = 2 / Math.sqrt(1 - 0.8 * 0.8);
+        const cnAlphaSupersonic = 4 / Math.sqrt(1.2 * 1.2 - 1);
+        const t = (mach - 0.8) / 0.4; // 0 to 1 across transonic
+        return cnAlphaSubsonic * (1 - t) + cnAlphaSupersonic * t;
+    } else {
+        // Supersonic: CN_alpha decreases as Mach increases
+        const denominator = Math.sqrt(mach * mach - 1);
+        if (denominator < 1e-6) return 4; // Avoid division by zero
+        return 4 / denominator;
+    }
+}
+
+/**
+ * Calculate aerodynamic forces (normal and axial)
+ * 
+ * @param {number} altitude - Geometric altitude (m)
+ * @param {number} airspeed - Airspeed magnitude (m/s)
+ * @param {number} aoa - Angle of attack (radians)
+ * @param {Object} bodyAxis - Body axis direction vector {x, y}
+ * @param {number} airVx - Airspeed x component (m/s)
+ * @param {number} airVy - Airspeed y component (m/s)
+ * @param {Object} localUp - Local up unit vector {x, y}
+ * @param {Object} localEast - Local east unit vector {x, y}
+ * @param {Object} stage - Rocket stage configuration (optional)
+ * @returns {Object} { F_normal, F_axial, F_aero_x, F_aero_y, normal_dir, axial_dir }
+ */
+export function calculateAerodynamicForces(altitude, airspeed, aoa, bodyAxis, airVx, airVy, localUp, localEast, stage = null) {
+    // Use provided stage or get from state
+    if (!stage) {
+        if (state.currentStage >= ROCKET_CONFIG.stages.length) {
+            return {
+                F_normal: 0,
+                F_axial: 0,
+                F_aero_x: 0,
+                F_aero_y: 0,
+                normal_dir: { x: 0, y: 0 },
+                axial_dir: { x: 0, y: 0 }
+            };
+        }
+        stage = ROCKET_CONFIG.stages[state.currentStage];
+    }
+    
+    // Zero airspeed or zero AOA = no normal force
+    if (airspeed < 1e-6 || Math.abs(aoa) < 1e-6) {
+        // Just use existing drag model for axial force
+        const drag = getDrag(altitude, airspeed, stage);
+        const dragDirX = airspeed > 0 ? -airVx / airspeed : 0;
+        const dragDirY = airspeed > 0 ? -airVy / airspeed : 0;
+        
+        return {
+            F_normal: 0,
+            F_axial: drag,
+            F_aero_x: drag * dragDirX,
+            F_aero_y: drag * dragDirY,
+            normal_dir: { x: 0, y: 0 },
+            axial_dir: { x: dragDirX, y: dragDirY }
+        };
+    }
+    
+    // Get atmospheric properties
+    const atm = getAtmosphericProperties(altitude);
+    const density = atm.density;
+    const mach = airspeed / atm.speedOfSound;
+    
+    // Reference area
+    const area = Math.PI * (stage.diameter / 2) ** 2;
+    
+    // Dynamic pressure
+    const q = 0.5 * density * airspeed * airspeed;
+    
+    // Normal force coefficient
+    const cnAlpha = calculateNormalForceCoefficientDerivative(mach);
+    const cn = cnAlpha * aoa; // CN = CN_alpha * AOA
+    
+    // Normal force magnitude
+    const F_normal = q * area * cn;
+    
+    // Axial force coefficient (use existing drag model with cos(AOA) correction)
+    const caBase = getMachDragCoefficient(mach);
+    const ca = caBase * Math.cos(aoa); // For small angles, cos(AOA) ≈ 1
+    
+    // Axial force magnitude
+    const F_axial = q * area * ca;
+    
+    // Normalize body axis
+    const bodyMag = Math.sqrt(bodyAxis.x * bodyAxis.x + bodyAxis.y * bodyAxis.y);
+    const bodyUnitX = bodyAxis.x / bodyMag;
+    const bodyUnitY = bodyAxis.y / bodyMag;
+    
+    // Normal force direction: project airspeed onto plane perpendicular to body axis
+    const airspeedUnitX = airVx / airspeed;
+    const airspeedUnitY = airVy / airspeed;
+    
+    // Remove component parallel to body axis
+    const dotParallel = bodyUnitX * airspeedUnitX + bodyUnitY * airspeedUnitY;
+    let perpX = airspeedUnitX - dotParallel * bodyUnitX;
+    let perpY = airspeedUnitY - dotParallel * bodyUnitY;
+    
+    // Normalize perpendicular component
+    const perpMag = Math.sqrt(perpX * perpX + perpY * perpY);
+    let normalDirX = 0;
+    let normalDirY = 0;
+    
+    if (perpMag > 1e-6) {
+        normalDirX = perpX / perpMag;
+        normalDirY = perpY / perpMag;
+    }
+    
+    // Axial force direction (opposite to body axis)
+    const axialDirX = -bodyUnitX;
+    const axialDirY = -bodyUnitY;
+    
+    // Total aerodynamic force components
+    const F_aero_x = F_normal * normalDirX + F_axial * axialDirX;
+    const F_aero_y = F_normal * normalDirY + F_axial * axialDirY;
+    
+    return {
+        F_normal,
+        F_axial,
+        F_aero_x,
+        F_aero_y,
+        normal_dir: { x: normalDirX, y: normalDirY },
+        axial_dir: { x: axialDirX, y: axialDirY },
+        cn,
+        ca,
+        cnAlpha
+    };
+}
+
+/**
+ * Calculate aerodynamic torque about center of gravity
+ * 
+ * @param {number} altitude - Geometric altitude (m)
+ * @param {number} airspeed - Airspeed magnitude (m/s)
+ * @param {number} aoa - Angle of attack (radians)
+ * @param {Object} bodyAxis - Body axis direction vector {x, y}
+ * @param {number} airVx - Airspeed x component (m/s)
+ * @param {number} airVy - Airspeed y component (m/s)
+ * @param {Object} localUp - Local up unit vector {x, y}
+ * @param {Object} localEast - Local east unit vector {x, y}
+ * @returns {Object} { torque, momentArm, cpPosition, cogPosition }
+ */
+export function calculateAerodynamicTorque(altitude, airspeed, aoa, bodyAxis, airVx, airVy, localUp, localEast) {
+    // Zero airspeed or zero AOA = no torque
+    if (airspeed < 1e-6 || Math.abs(aoa) < 1e-6) {
+        return {
+            torque: 0,
+            momentArm: 0,
+            cpPosition: 0,
+            cogPosition: 0
+        };
+    }
+    
+    // Get rocket geometry
+    const cogData = calculateRocketCOG();
+    const cogPosition = cogData.cog; // From rocket bottom
+    const rocketLength = cogData.rocketLength;
+    
+    // Get Mach number
+    const atm = getAtmosphericProperties(altitude);
+    const mach = airspeed / atm.speedOfSound;
+    
+    // Calculate CP position
+    const cpPosition = calculateCenterOfPressure(mach, rocketLength);
+    
+    // Moment arm (CP - COG, both from rocket bottom)
+    const momentArm = cpPosition - cogPosition;
+    
+    // Calculate normal force (only normal force creates torque)
+    if (state.currentStage >= ROCKET_CONFIG.stages.length) {
+        return {
+            torque: 0,
+            momentArm,
+            cpPosition,
+            cogPosition
+        };
+    }
+    
+    const stage = ROCKET_CONFIG.stages[state.currentStage];
+    const aeroForces = calculateAerodynamicForces(
+        altitude, airspeed, aoa, bodyAxis, airVx, airVy, localUp, localEast, stage
+    );
+    
+    const F_normal = aeroForces.F_normal;
+    
+    // Torque = F_normal * moment_arm
+    // Positive torque rotates rocket clockwise (pitch down)
+    const torque = F_normal * momentArm;
+    
+    return {
+        torque,
+        momentArm,
+        cpPosition,
+        cogPosition
+    };
 }
 

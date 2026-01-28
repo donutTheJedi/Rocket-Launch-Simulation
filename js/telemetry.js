@@ -1,6 +1,6 @@
 import { EARTH_RADIUS, ROCKET_CONFIG, KARMAN_LINE } from './constants.js';
 import { state, getAltitude, getTotalMass, getPitch } from './state.js';
-import { getAtmosphericDensity, getCurrentThrust, getAirspeed, getCurrentDragCoefficient, calculateRocketCOG, calculateFuelLevel } from './physics.js';
+import { getAtmosphericDensity, getCurrentThrust, getAirspeed, getCurrentDragCoefficient, calculateRocketCOG, calculateFuelLevel, calculateCenterOfPressure, getMachNumber } from './physics.js';
 import { formatTime, formatTMinus, getNextEvent } from './events.js';
 import { predictOrbit } from './orbital.js';
 
@@ -83,24 +83,54 @@ export function updateTelemetry() {
     }
     document.getElementById('thrust').textContent = (thrust / 1000).toFixed(0) + ' kN';
     
-    // Calculate and display COG
+    // Calculate and display COG and CoP
     const cogEl = document.getElementById('cog');
+    const copEl = document.getElementById('cop');
     const fuelLevelEl = document.getElementById('fuel-level');
-    if (cogEl || fuelLevelEl) {
+    if (cogEl || copEl || fuelLevelEl) {
         try {
             const cogData = calculateRocketCOG();
             if (cogEl) {
                 // Show COG from bottom and as percentage
                 cogEl.textContent = cogData.cog.toFixed(1) + ' m (' + (cogData.cogFraction * 100).toFixed(0) + '%)';
             }
+            
+            // Calculate and display CoP (Center of Pressure)
+            if (copEl) {
+                const rocketLength = cogData.rocketLength;
+                let copPosition = 0;
+                let copFraction = 0;
+                
+                if (rocketLength > 0) {
+                    // Always calculate CoP based on current conditions
+                    // Default to subsonic CP (50% of rocket length) if not in atmosphere
+                    let mach = 0;
+                    
+                    if (altitude < KARMAN_LINE) {
+                        // In atmosphere - get actual Mach number
+                        const { airspeed: airspeedForCop } = getAirspeed();
+                        if (airspeedForCop > 1e-3) {
+                            mach = getMachNumber(airspeedForCop, altitude);
+                        }
+                    }
+                    
+                    // Calculate CoP (will use mach=0 for subsonic/default case)
+                    copPosition = calculateCenterOfPressure(mach, rocketLength);
+                    copFraction = copPosition / rocketLength;
+                }
+                
+                copEl.textContent = copPosition.toFixed(1) + ' m (' + (copFraction * 100).toFixed(0) + '%)';
+            }
+            
             if (fuelLevelEl && state.currentStage < ROCKET_CONFIG.stages.length) {
                 // Show fuel level in current stage tank
                 const fuelInfo = calculateFuelLevel(state.currentStage);
                 fuelLevelEl.textContent = fuelInfo.fuelHeight.toFixed(1) + ' m / ' + fuelInfo.tankHeight.toFixed(1) + ' m';
             }
         } catch (e) {
-            // Fallback if COG calculation fails
+            // Fallback if calculation fails
             if (cogEl) cogEl.textContent = '-- m';
+            if (copEl) copEl.textContent = '-- m';
             if (fuelLevelEl) fuelLevelEl.textContent = '-- m';
         }
     }
