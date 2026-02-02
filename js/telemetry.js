@@ -1,4 +1,5 @@
-import { EARTH_RADIUS, ROCKET_CONFIG, KARMAN_LINE } from './constants.js';
+import { EARTH_RADIUS, KARMAN_LINE } from './constants.js';
+import { getRocketConfig } from './rocketConfig.js';
 import { state, getAltitude, getTotalMass, getPitch } from './state.js';
 import { getAtmosphericDensity, getCurrentThrust, getAirspeed, getCurrentDragCoefficient, calculateRocketCOG, calculateFuelLevel, calculateCenterOfPressure, getMachNumber } from './physics.js';
 import { formatTime, formatTMinus, getNextEvent } from './events.js';
@@ -77,7 +78,7 @@ export function updateTelemetry() {
     }
     document.getElementById('mass').textContent = mass.toFixed(0) + ' kg';
     
-    const stage = ROCKET_CONFIG.stages[state.currentStage];
+    const stage = getRocketConfig().stages[state.currentStage];
     if (stage) {
         document.getElementById('propellant').textContent = (state.propellantRemaining[state.currentStage] / stage.propellantMass * 100).toFixed(1) + '%';
     }
@@ -122,7 +123,7 @@ export function updateTelemetry() {
                 copEl.textContent = copPosition.toFixed(1) + ' m (' + (copFraction * 100).toFixed(0) + '%)';
             }
             
-            if (fuelLevelEl && state.currentStage < ROCKET_CONFIG.stages.length) {
+            if (fuelLevelEl && state.currentStage < getRocketConfig().stages.length) {
                 // Show fuel level in current stage tank
                 const fuelInfo = calculateFuelLevel(state.currentStage);
                 fuelLevelEl.textContent = fuelInfo.fuelHeight.toFixed(1) + ' m / ' + fuelInfo.tankHeight.toFixed(1) + ' m';
@@ -151,9 +152,9 @@ export function updateTelemetry() {
     
     // Check if fuel is available (used for mobile manual mode positioning)
     let hasFuel = false;
-    if (state.currentStage < ROCKET_CONFIG.stages.length) {
+    if (state.currentStage < getRocketConfig().stages.length) {
         // Check current stage and future stages for remaining propellant
-        for (let i = state.currentStage; i < ROCKET_CONFIG.stages.length; i++) {
+        for (let i = state.currentStage; i < getRocketConfig().stages.length; i++) {
             if (state.propellantRemaining[i] > 0) {
                 hasFuel = true;
                 break;

@@ -21,6 +21,7 @@ A realistic 2D physics simulation of orbital mechanics and rocket launches from 
 - [Controls](#-controls)
 - [Technical Details](#-technical-details)
 - [Guidance System](#-guidance-system)
+- [Rocket Customization](#-rocket-customization)
 - [Project Structure](#-project-structure)
 - [Roadmap](#-roadmap)
 - [Contributing](#-contributing)
@@ -59,6 +60,7 @@ A realistic 2D physics simulation of orbital mechanics and rocket launches from 
 - **Orbital Visualization**: Real-time orbit prediction and visualization
 - **Time Warp**: Speed up simulation up to 1000x
 - **Camera Controls**: Follow rocket or center on Earth
+- **Rocket Customization**: Build your own rocket with Basic and Advanced parameter tabs; resizable diagram area (see [Rocket Customization](#-rocket-customization))
 
 ## 🚀 Getting Started
 
@@ -146,9 +148,8 @@ Spawn directly in orbit to practice orbital mechanics without going through laun
 | Open Settings | Click **☰ Settings** hamburger button (under Manual Control section) |
 | Toggle Control Mode | **Turn Rate** / **Gimbal** buttons (in Settings) |
 | Toggle Aerodynamic Forces | **Off** / **On** buttons (in Settings, Gimbal mode only) |
-| Open Settings | Click **☰ Settings** hamburger button (under Manual Control section) |
-| Toggle Control Mode | **Turn Rate** / **Gimbal** buttons (in Settings) |
-| Toggle Aerodynamic Forces | **Off** / **On** buttons (in Settings, Gimbal mode only) |
+| Build your own rocket | **Build your own rocket** button (under Manual Control, above Settings) |
+| Resize diagram area | Drag the vertical bar between parameters and diagram (Basic tab) |
 
 ### Orbital Mode
 | Action | Control |
@@ -205,7 +206,7 @@ Spawn directly in orbit to practice orbital mechanics without going through laun
 
 ### Rocket Configuration
 
-The simulation uses a **Falcon 9-like** configuration:
+You can customize your rocket before each mission via **Build your own rocket** (Manual Control section). The default is a **Falcon 9-like** configuration:
 
 **Stage 1**:
 - Dry Mass: 22,200 kg
@@ -222,6 +223,8 @@ The simulation uses a **Falcon 9-like** configuration:
 - ISP: 348 s
 
 **Payload**: 15,000 kg
+
+See [Rocket Customization](#-rocket-customization) for the full parameter list and builder UI.
 
 ### Numerical Integration
 
@@ -323,6 +326,28 @@ flowchart TD
 - **Max pitch rate**: 2°/s
 - **Max Q limit**: 35 kPa (typical Falcon 9 structural limit)
 
+## 🛠 Rocket Customization
+
+Build and tune your own rocket before starting a mission. Open the menu, then click **Build your own rocket** (above Settings in the Manual Control section).
+
+### Basic Tab
+- **Stage 1 & 2**: Dry mass, propellant mass, thrust (SL/vac), diameter, length, drag coefficient
+- **Payload**: Mass, length, diameter
+- **Fairing**: Mass, length, diameter
+- **Diagram area**: A resizable panel (drag the vertical bar to change its width). The rectangle inside scales to fit while keeping aspect ratio. *This is a **placeholder**: a **customizable rocket diagram** is planned here so you can see and interact with your rocket shape (e.g. drag to resize stages, fuel tanks) to make tuning more intuitive. The feature is not done yet.*
+
+### Advanced Tab
+- **Stages**: Isp (SL/vac), tank length ratio, engine length, engine mass fraction, gimbal (max angle, rate, pivot point)
+- **Global**: Fairing jettison altitude, propellant density
+
+### Behavior
+- **Reset to default**: Restores the Falcon 9-like configuration
+- **Done**: Closes the builder; your design applies to the **next** mission start (Manual, Guided, or Orbital)
+- All parameters are persisted for the session; the simulation reads from the current config when you launch or spawn
+
+### Planned: Customizable Rocket Diagram (not yet implemented)
+The diagram area in the Basic tab currently shows a simple rectangle that resizes with the panel. The goal is to replace it with an **interactive rocket diagram** that reflects your parameters (stage lengths, diameters, payload, fairing) and allows intuitive editing—e.g. dragging to adjust stage height or tank size—so building a rocket feels more visual and intuitive. **This is not yet implemented.**
+
 ## 📁 Project Structure
 
 ```
@@ -341,7 +366,8 @@ Rocket/
     ├── input.js       # User input handling
     ├── renderer.js    # Canvas rendering
     ├── telemetry.js   # Telemetry display updates
-    └── constants.js   # Physical constants and configuration
+    ├── rocketConfig.js # Current rocket config (get/set, builder)
+    └── constants.js   # Physical constants and default configuration
 ```
 
 ### Key Files
@@ -422,6 +448,15 @@ Real-time visualization of forces and rocket state.
 - [x] Click-to-expand functionality for detailed viewing
 - [x] Diagrams rotate with rocket orientation
 - [x] Automatic stage separation visualization
+
+#### Rocket Customization (Builder) ✅ (partial)
+Build your own rocket with Basic and Advanced parameter tabs; diagram area is a placeholder.
+
+- [x] Current rocket config module (get/set, reset to default)
+- [x] "Build your own rocket" button and modal (Basic / Advanced tabs)
+- [x] Basic tab: thrust, mass, diameter, length, propellant, drag coeff (+ payload, fairing)
+- [x] Advanced tab: Isp, tank ratio, engine length, gimbal, fairing jettison alt, propellant density
+- [ ] **Customizable rocket diagram** (not yet done): Replace placeholder rectangle with an interactive diagram that reflects your parameters (stage lengths, diameters, payload, fairing) and allows intuitive editing—e.g. drag to resize stage height or tank size—so building a rocket is more visual and intuitive
 
 #### Telemetry Graphs & Post-Flight Review
 Add real-time plotting during flight and comprehensive post-flight analysis.

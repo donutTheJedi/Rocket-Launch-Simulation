@@ -1,4 +1,5 @@
-import { G, EARTH_MASS, EARTH_RADIUS, KARMAN_LINE, ROCKET_CONFIG, GUIDANCE_CONFIG } from './constants.js';
+import { G, EARTH_MASS, EARTH_RADIUS, KARMAN_LINE, GUIDANCE_CONFIG } from './constants.js';
+import { getRocketConfig } from './rocketConfig.js';
 import { state, getAltitude, getTotalMass } from './state.js';
 import { getMassFlowRate, getGravity, getCurrentThrust, getDrag, getAirspeed } from './physics.js';
 import { predictOrbit } from './orbital.js';
@@ -196,7 +197,7 @@ function calculateTimeToAltitude(currentAltitude, targetAltitude, vVert) {
     
     // Thrust component in vertical direction
     let thrustVert = 0;
-    if (state.engineOn && state.currentStage < ROCKET_CONFIG.stages.length) {
+    if (state.engineOn && state.currentStage < getRocketConfig().stages.length) {
         const throttle = state.guidanceThrottle !== undefined ? state.guidanceThrottle : 1.0;
         const thrust = getCurrentThrust(currentAltitude, throttle);
         const mass = getTotalMass();
@@ -321,8 +322,8 @@ export function calculateBurnEvents() {
     const circularizationDeltaV = Math.max(0, v_circular - v_at_apo);
     
     let circularizationBurnTime = 0;
-    if (state.currentStage < ROCKET_CONFIG.stages.length && circularizationDeltaV > 0) {
-        const stage = ROCKET_CONFIG.stages[state.currentStage];
+    if (state.currentStage < getRocketConfig().stages.length && circularizationDeltaV > 0) {
+        const stage = getRocketConfig().stages[state.currentStage];
         const currentMass = getTotalMass();
         const thrust = stage.thrustVac;
         if (thrust > 0) {
@@ -471,8 +472,8 @@ export function calculateBurnEvents() {
             const retrogradeDeltaV = Math.max(0, v_at_peri - v_peri_target);
             
             let retrogradeBurnTime = 0;
-            if (state.currentStage < ROCKET_CONFIG.stages.length && retrogradeDeltaV > 0) {
-                const stage = ROCKET_CONFIG.stages[state.currentStage];
+            if (state.currentStage < getRocketConfig().stages.length && retrogradeDeltaV > 0) {
+                const stage = getRocketConfig().stages[state.currentStage];
                 const currentMass = getTotalMass();
                 const thrust = stage.thrustVac;
                 if (thrust > 0) {
@@ -543,12 +544,12 @@ export function getNextEvent() {
     }
     
     // Fairing jettison (110km)
-    if (!state.fairingJettisoned && altitude < ROCKET_CONFIG.fairingJettisonAlt) {
+    if (!state.fairingJettisoned && altitude < getRocketConfig().fairingJettisonAlt) {
         const r = Math.sqrt(state.x * state.x + state.y * state.y);
         const localUp = { x: state.x / r, y: state.y / r };
         const vVert = state.vx * localUp.x + state.vy * localUp.y;
         if (vVert > 0) {
-            const timeToFairing = calculateTimeToAltitude(altitude, ROCKET_CONFIG.fairingJettisonAlt, vVert);
+            const timeToFairing = calculateTimeToAltitude(altitude, getRocketConfig().fairingJettisonAlt, vVert);
             if (timeToFairing > 0 && timeToFairing < 10000 && isFinite(timeToFairing)) {
                 events.push({ time: timeToFairing, name: 'Fairing jettison' });
             }
@@ -577,7 +578,7 @@ export function getNextEvent() {
             const timeToOrbit = calculateTimeToAltitude(altitude, 150000, vVert);
             if (timeToOrbit > 0 && timeToOrbit < 10000 && isFinite(timeToOrbit)) {
                 let totalTime = timeToOrbit;
-                if (state.engineOn && state.currentStage < ROCKET_CONFIG.stages.length) {
+                if (state.engineOn && state.currentStage < getRocketConfig().stages.length) {
                     const throttle = state.guidanceThrottle !== undefined ? state.guidanceThrottle : 1.0;
                     const massFlowRate = getMassFlowRate(altitude, throttle);
                     if (massFlowRate > 0 && state.propellantRemaining[state.currentStage] > 0) {

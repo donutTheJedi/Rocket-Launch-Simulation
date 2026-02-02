@@ -1,4 +1,5 @@
-import { EARTH_RADIUS, EARTH_ROTATION, ROCKET_CONFIG, G, EARTH_MASS } from './constants.js';
+import { EARTH_RADIUS, EARTH_ROTATION, G, EARTH_MASS } from './constants.js';
+import { getRocketConfig } from './rocketConfig.js';
 import { addEvent } from './events.js';
 
 // Game state object
@@ -11,7 +12,7 @@ export const state = {
     vx: 0,
     vy: 0,
     currentStage: 0,
-    propellantRemaining: [ROCKET_CONFIG.stages[0].propellantMass, ROCKET_CONFIG.stages[1].propellantMass],
+    propellantRemaining: (() => { const c = getRocketConfig(); return [c.stages[0].propellantMass, c.stages[1].propellantMass]; })(),
     fairingJettisoned: false,
     maxQ: 0,
     events: [],
@@ -88,7 +89,8 @@ export function initState() {
     state.vx = atmVx0;  // Match atmospheric velocity so airspeed is ~0
     state.vy = atmVy0;
     state.currentStage = 0;
-    state.propellantRemaining = [ROCKET_CONFIG.stages[0].propellantMass, ROCKET_CONFIG.stages[1].propellantMass];
+    const rocketConfig = getRocketConfig();
+    state.propellantRemaining = [rocketConfig.stages[0].propellantMass, rocketConfig.stages[1].propellantMass];
     state.fairingJettisoned = false;
     state.maxQ = 0;
     state.events = [];
@@ -171,7 +173,8 @@ export function spawnInOrbit(altitude = 500000) {
     state.vy = vy0;
     state.currentStage = 1; // Start with stage 2 (second stage)
     // Give 10% fuel for orbital mode
-    state.propellantRemaining = [0, ROCKET_CONFIG.stages[1].propellantMass * 0.1]; // Stage 1 empty, stage 2 at 10%
+    const rocketConfig = getRocketConfig();
+    state.propellantRemaining = [0, rocketConfig.stages[1].propellantMass * 0.1]; // Stage 1 empty, stage 2 at 10%
     state.fairingJettisoned = true; // Already in space
     state.maxQ = 0;
     state.events = [];
@@ -217,10 +220,11 @@ export function spawnInOrbit(altitude = 500000) {
 
 // Get total rocket mass
 export function getTotalMass() {
-    let mass = ROCKET_CONFIG.payload.mass;
-    if (!state.fairingJettisoned) mass += ROCKET_CONFIG.fairing.mass;
-    for (let i = state.currentStage; i < ROCKET_CONFIG.stages.length; i++) {
-        mass += ROCKET_CONFIG.stages[i].dryMass + state.propellantRemaining[i];
+    const rocketConfig = getRocketConfig();
+    let mass = rocketConfig.payload.mass;
+    if (!state.fairingJettisoned) mass += rocketConfig.fairing.mass;
+    for (let i = state.currentStage; i < rocketConfig.stages.length; i++) {
+        mass += rocketConfig.stages[i].dryMass + state.propellantRemaining[i];
     }
     return mass;
 }

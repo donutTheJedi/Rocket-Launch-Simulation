@@ -4,9 +4,9 @@ import {
     EARTH_ROTATION,
     ATM_SCALE_HEIGHT, 
     SEA_LEVEL_PRESSURE, 
-    SEA_LEVEL_DENSITY,
-    ROCKET_CONFIG 
+    SEA_LEVEL_DENSITY
 } from './constants.js';
+import { getRocketConfig } from './rocketConfig.js';
 import { state, getTotalMass } from './state.js';
 
 /**
@@ -267,10 +267,10 @@ export function getGravity(r) {
 
 // Get current thrust (adjusted for altitude and throttle)
 export function getCurrentThrust(altitude, throttle = 1.0) {
-    if (!state.engineOn || state.currentStage >= ROCKET_CONFIG.stages.length) return 0;
+    if (!state.engineOn || state.currentStage >= getRocketConfig().stages.length) return 0;
     if (state.propellantRemaining[state.currentStage] <= 0) return 0;
     
-    const stage = ROCKET_CONFIG.stages[state.currentStage];
+    const stage = getRocketConfig().stages[state.currentStage];
     const pressureRatio = getAtmosphericPressure(altitude) / SEA_LEVEL_PRESSURE;
     const baseThrust = stage.thrust * pressureRatio + stage.thrustVac * (1 - pressureRatio);
     return baseThrust * throttle;
@@ -278,10 +278,10 @@ export function getCurrentThrust(altitude, throttle = 1.0) {
 
 // Get mass flow rate
 export function getMassFlowRate(altitude, throttle = 1.0) {
-    if (!state.engineOn || state.currentStage >= ROCKET_CONFIG.stages.length) return 0;
+    if (!state.engineOn || state.currentStage >= getRocketConfig().stages.length) return 0;
     if (state.propellantRemaining[state.currentStage] <= 0) return 0;
     
-    const stage = ROCKET_CONFIG.stages[state.currentStage];
+    const stage = getRocketConfig().stages[state.currentStage];
     const pressureRatio = getAtmosphericPressure(altitude) / SEA_LEVEL_PRESSURE;
     const isp = stage.isp * pressureRatio + stage.ispVac * (1 - pressureRatio);
     return getCurrentThrust(altitude, throttle) / (isp * 9.81);
@@ -330,7 +330,7 @@ export function getAirspeed() {
  */
 export function getMachDragCoefficient(mach) {
     // Fineness ratio from rocket config
-    const finenessRatio = ROCKET_CONFIG.totalLength / ROCKET_CONFIG.stages[0].diameter;
+    const finenessRatio = getRocketConfig().totalLength / getRocketConfig().stages[0].diameter;
     
     // Fineness ratio adjustment factor
     // Higher L/D = lower drag coefficient (more streamlined)
@@ -397,8 +397,8 @@ export function getMachDragCoefficient(mach) {
 export function getDrag(altitude, airspeed, stage = null) {
     // Use provided stage or get from state
     if (!stage) {
-        if (state.currentStage >= ROCKET_CONFIG.stages.length) return 0;
-        stage = ROCKET_CONFIG.stages[state.currentStage];
+        if (state.currentStage >= getRocketConfig().stages.length) return 0;
+        stage = getRocketConfig().stages[state.currentStage];
     }
     
     const atm = getAtmosphericProperties(altitude);
@@ -479,7 +479,7 @@ export function getCurrentDragCoefficient(altitude, airspeed) {
  * @returns {Object} { fuelHeight, tankHeight, fillFraction }
  */
 export function calculateFuelLevel(stageIndex) {
-    const stage = ROCKET_CONFIG.stages[stageIndex];
+    const stage = getRocketConfig().stages[stageIndex];
     const propellantRemaining = state.propellantRemaining[stageIndex];
     
     // Tank dimensions (cylinder)
@@ -488,10 +488,10 @@ export function calculateFuelLevel(stageIndex) {
     const tankHeight = stage.length * stage.tankLengthRatio;     // m
     
     // Calculate initial fuel volume from density
-    const initialFuelVolume = stage.propellantMass / ROCKET_CONFIG.propellantDensity;  // m³
+    const initialFuelVolume = stage.propellantMass / getRocketConfig().propellantDensity;  // m³
     
     // Current fuel volume
-    const currentFuelVolume = propellantRemaining / ROCKET_CONFIG.propellantDensity;  // m³
+    const currentFuelVolume = propellantRemaining / getRocketConfig().propellantDensity;  // m³
     
     // Current fuel height in tank (fuel fills from bottom)
     const fuelHeight = currentFuelVolume / tankCrossSection;  // m
@@ -521,7 +521,7 @@ export function calculateFuelLevel(stageIndex) {
  * @returns {Object} { stageCOG, totalMass, fuelMass, dryMass }
  */
 export function calculateStageCOG(stageIndex) {
-    const stage = ROCKET_CONFIG.stages[stageIndex];
+    const stage = getRocketConfig().stages[stageIndex];
     const propellantRemaining = state.propellantRemaining[stageIndex];
     
     // Get fuel level info
@@ -579,9 +579,9 @@ export function calculateStageCOG(stageIndex) {
  * @returns {Object} Complete COG analysis
  */
 export function calculateRocketCOG() {
-    const stages = ROCKET_CONFIG.stages;
-    const payload = ROCKET_CONFIG.payload;
-    const fairing = ROCKET_CONFIG.fairing;
+    const stages = getRocketConfig().stages;
+    const payload = getRocketConfig().payload;
+    const fairing = getRocketConfig().fairing;
     
     let totalMass = 0;
     let momentSum = 0;
@@ -718,7 +718,7 @@ export function calculateRocketCOG() {
 export function calculateMomentOfInertia() {
     const cogData = calculateRocketCOG();
     const cogPosition = cogData.cog;  // COG from rocket bottom
-    const stages = ROCKET_CONFIG.stages;
+    const stages = getRocketConfig().stages;
     
     let totalMOI = 0;
     let currentBottom = 0;
@@ -793,7 +793,7 @@ export function calculateMomentOfInertia() {
     }
     
     // Payload contribution
-    const payload = ROCKET_CONFIG.payload;
+    const payload = getRocketConfig().payload;
     const payloadCOG = currentBottom + payload.length / 2;
     const payloadDist = payloadCOG - cogPosition;
     const payloadRadius = payload.diameter / 2;
@@ -804,7 +804,7 @@ export function calculateMomentOfInertia() {
     
     // Fairing contribution (if not jettisoned)
     if (!state.fairingJettisoned) {
-        const fairing = ROCKET_CONFIG.fairing;
+        const fairing = getRocketConfig().fairing;
         // Fairing is a cone - COG at 1/3 height, MOI approximated
         const fairingCOG = currentBottom + fairing.length / 3;
         const fairingDist = fairingCOG - cogPosition;
@@ -828,11 +828,11 @@ export function calculateMomentOfInertia() {
  * @returns {number} Moment arm in meters (positive = COG above gimbal)
  */
 export function calculateGimbalMomentArm() {
-    if (state.currentStage >= ROCKET_CONFIG.stages.length) {
+    if (state.currentStage >= getRocketConfig().stages.length) {
         return 0;
     }
     
-    const stage = ROCKET_CONFIG.stages[state.currentStage];
+    const stage = getRocketConfig().stages[state.currentStage];
     const cogData = calculateRocketCOG();
     
     // Gimbal point is relative to the bottom of the current active stage
@@ -906,11 +906,11 @@ export function calculateAngularAcceleration(thrust, gimbalAngleDeg) {
  * @returns {number} New gimbal angle (degrees)
  */
 export function updateGimbalAngle(commandedAngle, currentAngle, dt) {
-    if (state.currentStage >= ROCKET_CONFIG.stages.length) {
+    if (state.currentStage >= getRocketConfig().stages.length) {
         return 0;
     }
     
-    const stage = ROCKET_CONFIG.stages[state.currentStage];
+    const stage = getRocketConfig().stages[state.currentStage];
     const maxAngle = stage.gimbalMaxAngle;
     const maxRate = stage.gimbalRate;  // degrees/second
     
@@ -1092,8 +1092,8 @@ export function calculateCommandedGimbal(targetPitchDeg, dt) {
     let gimbalCommand = -Kp * pitchError + Kd * angularVelError;
     
     // Clamp to gimbal limits
-    if (state.currentStage < ROCKET_CONFIG.stages.length) {
-        const maxGimbal = ROCKET_CONFIG.stages[state.currentStage].gimbalMaxAngle;
+    if (state.currentStage < getRocketConfig().stages.length) {
+        const maxGimbal = getRocketConfig().stages[state.currentStage].gimbalMaxAngle;
         gimbalCommand = Math.max(-maxGimbal, Math.min(maxGimbal, gimbalCommand));
     }
     
@@ -1219,7 +1219,7 @@ export function calculateNormalForceCoefficientDerivative(mach) {
 export function calculateAerodynamicForces(altitude, airspeed, aoa, bodyAxis, airVx, airVy, localUp, localEast, stage = null) {
     // Use provided stage or get from state
     if (!stage) {
-        if (state.currentStage >= ROCKET_CONFIG.stages.length) {
+        if (state.currentStage >= getRocketConfig().stages.length) {
             return {
                 F_normal: 0,
                 F_axial: 0,
@@ -1229,7 +1229,7 @@ export function calculateAerodynamicForces(altitude, airspeed, aoa, bodyAxis, ai
                 axial_dir: { x: 0, y: 0 }
             };
         }
-        stage = ROCKET_CONFIG.stages[state.currentStage];
+        stage = getRocketConfig().stages[state.currentStage];
     }
     
     // Zero airspeed or zero AOA = no normal force
@@ -1359,7 +1359,7 @@ export function calculateAerodynamicTorque(altitude, airspeed, aoa, bodyAxis, ai
     const momentArm = cpPosition - cogPosition;
     
     // Calculate normal force (only normal force creates torque)
-    if (state.currentStage >= ROCKET_CONFIG.stages.length) {
+    if (state.currentStage >= getRocketConfig().stages.length) {
         return {
             torque: 0,
             momentArm,
@@ -1368,7 +1368,7 @@ export function calculateAerodynamicTorque(altitude, airspeed, aoa, bodyAxis, ai
         };
     }
     
-    const stage = ROCKET_CONFIG.stages[state.currentStage];
+    const stage = getRocketConfig().stages[state.currentStage];
     const aeroForces = calculateAerodynamicForces(
         altitude, airspeed, aoa, bodyAxis, airVx, airVy, localUp, localEast, stage
     );

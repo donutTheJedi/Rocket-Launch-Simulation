@@ -114,6 +114,8 @@
             <p class="menu-description">Control pitch manually (W/S keys). Guidance provides recommendations.</p>
             <button id="start-manual-btn" class="menu-start-btn">START MANUAL CONTROL</button>
             
+            <button id="build-rocket-btn" class="build-rocket-btn">Build your own rocket</button>
+            
             <!-- Settings hamburger menu -->
             <div class="settings-hamburger-container">
                 <button id="settings-toggle-btn" class="settings-hamburger-btn">
@@ -170,6 +172,29 @@
     </div>
     
     <div id="menu-overlay" style="display: none;"></div>
+    
+    <!-- Rocket builder (overlay + wrapper: box + Done outside) -->
+    <div id="rocket-builder-overlay" class="rocket-builder-overlay" style="display: none;"></div>
+    <div id="rocket-builder-wrapper" class="rocket-builder-wrapper" style="display: none;">
+        <div id="rocket-builder-panel" class="rocket-builder-panel">
+            <div class="rocket-builder-header">
+                <h2>Rocket Builder</h2>
+                <button id="rocket-builder-close-btn" class="menu-close" aria-label="Close">×</button>
+            </div>
+            <p class="rocket-builder-note">Rocket design applies to the next mission start.</p>
+            <div class="rocket-builder-tabs">
+                <button id="rocket-builder-tab-basic" class="rocket-builder-tab active">Basic</button>
+                <button id="rocket-builder-tab-advanced" class="rocket-builder-tab">Advanced</button>
+            </div>
+            <div class="rocket-builder-actions">
+                <button id="rocket-builder-reset-btn" class="rocket-builder-reset-btn">Reset to default</button>
+            </div>
+            <div id="rocket-builder-content" class="rocket-builder-content"></div>
+        </div>
+        <div class="rocket-builder-footer">
+            <button id="rocket-builder-done-btn" class="menu-start-btn">Done</button>
+        </div>
+    </div>
     
     <!-- Mobile UI Panel (slides in from left) -->
     <div id="mobile-ui-panel" class="mobile-ui-panel">

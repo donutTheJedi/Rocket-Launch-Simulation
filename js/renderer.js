@@ -1,4 +1,5 @@
-import { G, EARTH_MASS, EARTH_RADIUS, KARMAN_LINE, ROCKET_CONFIG } from './constants.js';
+import { G, EARTH_MASS, EARTH_RADIUS, KARMAN_LINE } from './constants.js';
+import { getRocketConfig } from './rocketConfig.js';
 import { state, getAltitude } from './state.js';
 import { computeGuidance } from './guidance.js';
 import { calculateRocketCOG, calculateCenterOfPressure, getMachNumber, getAirspeed } from './physics.js';
@@ -358,7 +359,7 @@ export function render() {
     
     // Flame - only show when actually boosting (engine on, has propellant, valid stage)
     if (state.engineOn && 
-        state.currentStage < ROCKET_CONFIG.stages.length && 
+        state.currentStage < getRocketConfig().stages.length && 
         state.propellantRemaining[state.currentStage] > 0) {
         
         // Save context to apply gimbal rotation
@@ -395,7 +396,7 @@ export function render() {
     
     // Draw thrust vector arrow - only show when actually boosting
     if (state.engineOn && 
-        state.currentStage < ROCKET_CONFIG.stages.length && 
+        state.currentStage < getRocketConfig().stages.length && 
         state.propellantRemaining[state.currentStage] > 0) {
         const arrowLength = 100;
         const arrowHeadSize = 12;
@@ -734,7 +735,7 @@ function drawRocketDiagram(ctx, canvas, expanded = false) {
     const scale = maxRocketHeight / rocketLength;
     const rocketDisplayLength = rocketLength * scale;
     // Make rocket thinner - reduced width multiplier
-    const rocketDisplayWidth = Math.max(expanded ? 1.5 : 1, ROCKET_CONFIG.stages[0].diameter * scale * (expanded ? 4 : 3)); // Much thinner body
+    const rocketDisplayWidth = Math.max(expanded ? 1.5 : 1, getRocketConfig().stages[0].diameter * scale * (expanded ? 4 : 3)); // Much thinner body
     
     // Calculate positions along rocket (from bottom, in rocket-local coordinates)
     const cogFromBottom = cogPosition / rocketLength; // Fraction from bottom (0-1)
@@ -742,12 +743,12 @@ function drawRocketDiagram(ctx, canvas, expanded = false) {
     
     // Calculate gimbal point position
     let gimbalFromBottom = 0; // Default to bottom
-    if (state.currentStage < ROCKET_CONFIG.stages.length) {
-        const stage = ROCKET_CONFIG.stages[state.currentStage];
+    if (state.currentStage < getRocketConfig().stages.length) {
+        const stage = getRocketConfig().stages[state.currentStage];
         const gimbalPosition = stage.gimbalPoint; // From stage bottom
         let gimbalFromRocketBottom = gimbalPosition;
         if (state.currentStage === 1) {
-            gimbalFromRocketBottom += ROCKET_CONFIG.stages[0].length;
+            gimbalFromRocketBottom += getRocketConfig().stages[0].length;
         }
         gimbalFromBottom = gimbalFromRocketBottom / rocketLength;
     }

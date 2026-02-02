@@ -1,4 +1,5 @@
-import { ROCKET_CONFIG, GUIDANCE_CONFIG } from './constants.js';
+import { GUIDANCE_CONFIG } from './constants.js';
+import { getRocketConfig } from './rocketConfig.js';
 import { state, initState, getAltitude, resetCurrentMission } from './state.js';
 import { resetGuidance } from './guidance.js';
 import { addEvent } from './events.js';
@@ -185,11 +186,11 @@ export function initInput() {
     
     // Refuel button
     document.getElementById('refuel-btn').addEventListener('click', () => {
-        if (state.currentStage < ROCKET_CONFIG.stages.length) {
+        if (state.currentStage < getRocketConfig().stages.length) {
             const refuelAmount = 5000;
             state.propellantRemaining[state.currentStage] += refuelAmount;
-            if (state.propellantRemaining[state.currentStage] > ROCKET_CONFIG.stages[state.currentStage].propellantMass) {
-                state.propellantRemaining[state.currentStage] = ROCKET_CONFIG.stages[state.currentStage].propellantMass;
+            if (state.propellantRemaining[state.currentStage] > getRocketConfig().stages[state.currentStage].propellantMass) {
+                state.propellantRemaining[state.currentStage] = getRocketConfig().stages[state.currentStage].propellantMass;
             }
             addEvent(`Refueled: +${refuelAmount} kg propellant`);
         }
@@ -262,8 +263,8 @@ export function initInput() {
             
             if (state.settings.controlMode === 'gimbal') {
                 // Gimbal control mode: directly control gimbal angle
-                const gimbalRate = ROCKET_CONFIG.stages[state.currentStage]?.gimbalRate || 15; // deg/s
-                const maxGimbal = ROCKET_CONFIG.stages[state.currentStage]?.gimbalMaxAngle || 5;
+                const gimbalRate = getRocketConfig().stages[state.currentStage]?.gimbalRate || 15; // deg/s
+                const maxGimbal = getRocketConfig().stages[state.currentStage]?.gimbalMaxAngle || 5;
                 
                 if (pitchUpHeld) {
                     // Pitch up = need negative gimbal (thrust vector tilted to rotate pitch up)

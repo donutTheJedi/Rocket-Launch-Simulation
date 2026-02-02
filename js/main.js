@@ -1,4 +1,5 @@
-import { EARTH_RADIUS, EARTH_ROTATION, KARMAN_LINE, ROCKET_CONFIG, GUIDANCE_CONFIG } from './constants.js';
+import { EARTH_RADIUS, EARTH_ROTATION, KARMAN_LINE, GUIDANCE_CONFIG } from './constants.js';
+import { getRocketConfig, setRocketConfig, resetToDefault } from './rocketConfig.js';
 import { state, initState, getAltitude, getTotalMass, resetCurrentMission, spawnInOrbit } from './state.js';
 import { getGravity, getCurrentThrust, getMassFlowRate, getAtmosphericDensity, getAirspeed, getDrag, 
          integrateRotationalDynamics, getRocketThrustDirection, calculateCommandedGimbal,
@@ -13,6 +14,7 @@ import { initInput } from './input.js';
 // Update physics simulation
 function update(dt) {
     if (!state.running) return;
+    const rocketConfig = getRocketConfig();
     
     // Update manual pitch if in manual mode (use original dt before time warp for consistent turning speed)
     if (window.updateManualPitch) {
@@ -86,7 +88,7 @@ function update(dt) {
     // Enable engine for burn modes
     // In orbital mode, always allow burns if conditions are met
     if (state.burnMode && pitchProgramComplete && !state.engineOn && altitude > 150000 && 
-        state.currentStage < ROCKET_CONFIG.stages.length && 
+        state.currentStage < rocketConfig.stages.length && 
         state.propellantRemaining[state.currentStage] > 0) {
         state.engineOn = true;
     }
@@ -317,7 +319,7 @@ function update(dt) {
         state.y += state.vy * actualStepDt;
         
         // Propellant consumption per sub-step (using actual throttle for this step)
-        if (state.engineOn && state.currentStage < ROCKET_CONFIG.stages.length) {
+        if (state.engineOn && state.currentStage < rocketConfig.stages.length) {
             state.propellantRemaining[state.currentStage] -= getMassFlowRate(altitudeStep, throttleStep) * actualStepDt;
         }
     }
@@ -329,7 +331,7 @@ function update(dt) {
     
     state.forceVectors.gravity = { x: -localUpFinal.x, y: -localUpFinal.y };
     
-    if (state.engineOn && state.currentStage < ROCKET_CONFIG.stages.length &&
+    if (state.engineOn && state.currentStage < rocketConfig.stages.length &&
         state.propellantRemaining[state.currentStage] > 0) {
         state.forceVectors.thrust = getRocketThrustDirection(localUpFinal, localEastFinal);
     } else {
@@ -377,7 +379,7 @@ function update(dt) {
     }
     
     // Check for stage depletion after all sub-steps
-    if (state.currentStage < ROCKET_CONFIG.stages.length && 
+    if (state.currentStage < rocketConfig.stages.length && 
         state.propellantRemaining[state.currentStage] <= 0) {
         state.propellantRemaining[state.currentStage] = 0;
         if (state.currentStage === 0) {
@@ -426,7 +428,7 @@ function update(dt) {
         state.burnStartTime = state.time;
     }
     
-    if (!state.fairingJettisoned && altitude > ROCKET_CONFIG.fairingJettisonAlt) {
+    if (!state.fairingJettisoned && altitude > rocketConfig.fairingJettisonAlt) {
         state.fairingJettisoned = true;
         addEvent("Fairing jettison");
     }
@@ -647,6 +649,279 @@ function initTopLinksPosition() {
     });
 }
 
+// ========== Rocket builder ==========
+// Schema: path, label, min, max, step, tab ('basic' | 'advanced')
+const ROCKET_BUILDER_SCHEMA = [
+    // Stage 1 - Basic: thrust, mass, diameter, length, propellant, drag coeff
+    { path: 'stages.0.dryMass', label: 'Stage 1 Dry mass (kg)', min: 5000, max: 50000, step: 100, tab: 'basic' },
+    { path: 'stages.0.propellantMass', label: 'Stage 1 Propellant (kg)', min: 100000, max: 600000, step: 1000, tab: 'basic' },
+    { path: 'stages.0.thrust', label: 'Stage 1 Thrust SL (N)', min: 1e6, max: 15e6, step: 100000, tab: 'basic' },
+    { path: 'stages.0.thrustVac', label: 'Stage 1 Thrust vac (N)', min: 1e6, max: 15e6, step: 100000, tab: 'basic' },
+    { path: 'stages.0.diameter', label: 'Stage 1 Diameter (m)', min: 2, max: 6, step: 0.1, tab: 'basic' },
+    { path: 'stages.0.length', label: 'Stage 1 Length (m)', min: 20, max: 60, step: 1, tab: 'basic' },
+    { path: 'stages.0.dragCoeff', label: 'Stage 1 Drag coeff', min: 0.2, max: 0.5, step: 0.01, tab: 'basic' },
+    // Stage 1 - Advanced
+    { path: 'stages.0.isp', label: 'Stage 1 Isp SL (s)', min: 250, max: 350, step: 1, tab: 'advanced' },
+    { path: 'stages.0.ispVac', label: 'Stage 1 Isp vac (s)', min: 280, max: 380, step: 1, tab: 'advanced' },
+    { path: 'stages.0.tankLengthRatio', label: 'Stage 1 Tank ratio', min: 0.5, max: 0.95, step: 0.01, tab: 'advanced' },
+    { path: 'stages.0.engineLength', label: 'Stage 1 Engine length (m)', min: 1, max: 5, step: 0.1, tab: 'advanced' },
+    { path: 'stages.0.dryMassEngineFraction', label: 'Stage 1 Engine mass frac', min: 0.3, max: 0.8, step: 0.05, tab: 'advanced' },
+    { path: 'stages.0.gimbalMaxAngle', label: 'Stage 1 Gimbal max (°)', min: 1, max: 15, step: 0.5, tab: 'advanced' },
+    { path: 'stages.0.gimbalRate', label: 'Stage 1 Gimbal rate (°/s)', min: 5, max: 30, step: 0.5, tab: 'advanced' },
+    { path: 'stages.0.gimbalPoint', label: 'Stage 1 Gimbal point (m)', min: 0.2, max: 1.5, step: 0.1, tab: 'advanced' },
+    // Stage 2 - Basic
+    { path: 'stages.1.dryMass', label: 'Stage 2 Dry mass (kg)', min: 1000, max: 8000, step: 100, tab: 'basic' },
+    { path: 'stages.1.propellantMass', label: 'Stage 2 Propellant (kg)', min: 20000, max: 150000, step: 500, tab: 'basic' },
+    { path: 'stages.1.thrust', label: 'Stage 2 Thrust SL (N)', min: 100000, max: 2e6, step: 10000, tab: 'basic' },
+    { path: 'stages.1.thrustVac', label: 'Stage 2 Thrust vac (N)', min: 100000, max: 2e6, step: 10000, tab: 'basic' },
+    { path: 'stages.1.diameter', label: 'Stage 2 Diameter (m)', min: 2, max: 6, step: 0.1, tab: 'basic' },
+    { path: 'stages.1.length', label: 'Stage 2 Length (m)', min: 5, max: 25, step: 0.5, tab: 'basic' },
+    { path: 'stages.1.dragCoeff', label: 'Stage 2 Drag coeff', min: 0.2, max: 0.5, step: 0.01, tab: 'basic' },
+    // Stage 2 - Advanced
+    { path: 'stages.1.isp', label: 'Stage 2 Isp SL (s)', min: 300, max: 360, step: 1, tab: 'advanced' },
+    { path: 'stages.1.ispVac', label: 'Stage 2 Isp vac (s)', min: 320, max: 380, step: 1, tab: 'advanced' },
+    { path: 'stages.1.tankLengthRatio', label: 'Stage 2 Tank ratio', min: 0.5, max: 0.95, step: 0.01, tab: 'advanced' },
+    { path: 'stages.1.engineLength', label: 'Stage 2 Engine length (m)', min: 0.5, max: 4, step: 0.1, tab: 'advanced' },
+    { path: 'stages.1.dryMassEngineFraction', label: 'Stage 2 Engine mass frac', min: 0.3, max: 0.8, step: 0.05, tab: 'advanced' },
+    { path: 'stages.1.gimbalMaxAngle', label: 'Stage 2 Gimbal max (°)', min: 1, max: 15, step: 0.5, tab: 'advanced' },
+    { path: 'stages.1.gimbalRate', label: 'Stage 2 Gimbal rate (°/s)', min: 5, max: 25, step: 0.5, tab: 'advanced' },
+    { path: 'stages.1.gimbalPoint', label: 'Stage 2 Gimbal point (m)', min: 0.2, max: 1, step: 0.1, tab: 'advanced' },
+    // Payload - Basic
+    { path: 'payload.mass', label: 'Payload mass (kg)', min: 1000, max: 30000, step: 500, tab: 'basic' },
+    { path: 'payload.length', label: 'Payload length (m)', min: 2, max: 15, step: 0.5, tab: 'basic' },
+    { path: 'payload.diameter', label: 'Payload diameter (m)', min: 2, max: 6, step: 0.1, tab: 'basic' },
+    // Fairing - Basic
+    { path: 'fairing.mass', label: 'Fairing mass (kg)', min: 500, max: 3000, step: 50, tab: 'basic' },
+    { path: 'fairing.length', label: 'Fairing length (m)', min: 2, max: 10, step: 0.5, tab: 'basic' },
+    { path: 'fairing.diameter', label: 'Fairing diameter (m)', min: 2, max: 6, step: 0.1, tab: 'basic' },
+    // Global - Advanced
+    { path: 'fairingJettisonAlt', label: 'Fairing jettison alt (m)', min: 80000, max: 150000, step: 1000, tab: 'advanced' },
+    { path: 'propellantDensity', label: 'Propellant density (kg/m³)', min: 800, max: 1200, step: 10, tab: 'advanced' },
+];
+
+function getByPath(obj, path) {
+    const parts = path.split('.');
+    let cur = obj;
+    for (const p of parts) {
+        cur = cur[p];
+        if (cur === undefined) return undefined;
+    }
+    return cur;
+}
+
+function setByPath(obj, path, value) {
+    const parts = path.split('.');
+    let cur = obj;
+    for (let i = 0; i < parts.length - 1; i++) {
+        const p = parts[i];
+        if (!(p in cur)) cur[p] = {};
+        cur = cur[p];
+    }
+    cur[parts[parts.length - 1]] = value;
+}
+
+let rocketBuilderActiveTab = 'basic';
+
+function populateRocketBuilderContent(tab) {
+    const t = tab !== undefined ? tab : rocketBuilderActiveTab;
+    rocketBuilderActiveTab = t;
+    const content = document.getElementById('rocket-builder-content');
+    if (!content) return;
+    const config = getRocketConfig();
+    content.innerHTML = '';
+    content.classList.remove('basic-tab', 'advanced-tab');
+    content.classList.add(t === 'basic' ? 'basic-tab' : 'advanced-tab');
+
+    const schemaForTab = ROCKET_BUILDER_SCHEMA.filter((entry) => entry.tab === t);
+
+    if (t === 'basic') {
+        // Basic: single column params + resizable diagram (rectangle) that doesn't scroll
+        const layout = document.createElement('div');
+        layout.className = 'rocket-builder-basic-layout';
+        const paramsContainer = document.createElement('div');
+        paramsContainer.className = 'rocket-builder-params';
+        const resizer = document.createElement('div');
+        resizer.className = 'rocket-builder-resizer';
+        resizer.setAttribute('aria-label', 'Drag to resize diagram');
+        const diagramContainer = document.createElement('div');
+        diagramContainer.className = 'rocket-builder-diagram';
+        const DIAGRAM_MIN = 120;
+        const DIAGRAM_MAX = 420;
+        const DIAGRAM_DEFAULT = 220;
+        diagramContainer.style.width = DIAGRAM_DEFAULT + 'px';
+        const rect = document.createElement('div');
+        rect.className = 'rocket-builder-diagram-rect';
+        diagramContainer.appendChild(rect);
+        layout.appendChild(paramsContainer);
+        layout.appendChild(resizer);
+        layout.appendChild(diagramContainer);
+        content.appendChild(layout);
+
+        function sizeDiagramRect() {
+            const pad = 30;
+            const w = diagramContainer.clientWidth - pad;
+            const h = diagramContainer.clientHeight - pad;
+            if (w <= 0 || h <= 0) {
+                rect.style.width = '160px';
+                rect.style.height = '200px';
+                return;
+            }
+            const scaleByWidth = w / 160;
+            const scaleByHeight = h / 200;
+            const scale = Math.min(scaleByWidth, scaleByHeight);
+            const rectW = 160 * scale;
+            const rectH = 200 * scale;
+            rect.style.width = rectW + 'px';
+            rect.style.height = rectH + 'px';
+        }
+        sizeDiagramRect();
+        const diagramResizeObserver = new ResizeObserver(() => sizeDiagramRect());
+        diagramResizeObserver.observe(diagramContainer);
+
+        // Drag to resize diagram
+        resizer.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            const startX = e.clientX;
+            const startWidth = diagramContainer.offsetWidth;
+            const onMove = (moveEvent) => {
+                const delta = startX - moveEvent.clientX;
+                const newWidth = Math.min(DIAGRAM_MAX, Math.max(DIAGRAM_MIN, startWidth + delta));
+                diagramContainer.style.width = newWidth + 'px';
+            };
+            const onUp = () => {
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+            };
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+
+        schemaForTab.forEach(({ path, label, min, max, step }) => {
+            const isNewSection = path === 'stages.0.dryMass' || path === 'stages.1.dryMass' || path === 'payload.mass' || path === 'fairing.mass' || path === 'fairingJettisonAlt';
+            if (isNewSection) {
+                const name = path === 'stages.0.dryMass' ? 'Stage 1' : path === 'stages.1.dryMass' ? 'Stage 2' : path === 'payload.mass' ? 'Payload' : path === 'fairing.mass' ? 'Fairing' : 'Global';
+                const h = document.createElement('h4');
+                h.className = 'rocket-builder-section';
+                h.textContent = name;
+                paramsContainer.appendChild(h);
+            }
+            const val = getByPath(config, path);
+            const row = document.createElement('div');
+            row.className = 'rocket-builder-row';
+            const labelEl = document.createElement('label');
+            labelEl.textContent = label;
+            labelEl.htmlFor = `rocket-builder-${path.replace(/\./g, '-')}`;
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.id = input.name = `rocket-builder-${path.replace(/\./g, '-')}`;
+            input.dataset.path = path;
+            input.min = min;
+            input.max = max;
+            input.step = step;
+            input.value = typeof val === 'number' ? val : 0;
+            input.addEventListener('input', applyRocketBuilderForm);
+            input.addEventListener('change', applyRocketBuilderForm);
+            const valSpan = document.createElement('span');
+            valSpan.className = 'rocket-builder-value';
+            valSpan.textContent = input.value;
+            row.appendChild(labelEl);
+            row.appendChild(input);
+            row.appendChild(valSpan);
+            paramsContainer.appendChild(row);
+        });
+    } else {
+        // Advanced: double column grid as before
+        schemaForTab.forEach(({ path, label, min, max, step }) => {
+            const isNewSection = path === 'stages.0.dryMass' || path === 'stages.1.dryMass' || path === 'payload.mass' || path === 'fairing.mass' || path === 'fairingJettisonAlt';
+            if (isNewSection) {
+                const name = path === 'stages.0.dryMass' ? 'Stage 1' : path === 'stages.1.dryMass' ? 'Stage 2' : path === 'payload.mass' ? 'Payload' : path === 'fairing.mass' ? 'Fairing' : 'Global';
+                const h = document.createElement('h4');
+                h.className = 'rocket-builder-section';
+                h.textContent = name;
+                content.appendChild(h);
+            }
+            const val = getByPath(config, path);
+            const row = document.createElement('div');
+            row.className = 'rocket-builder-row';
+            const labelEl = document.createElement('label');
+            labelEl.textContent = label;
+            labelEl.htmlFor = `rocket-builder-${path.replace(/\./g, '-')}`;
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.id = input.name = `rocket-builder-${path.replace(/\./g, '-')}`;
+            input.dataset.path = path;
+            input.min = min;
+            input.max = max;
+            input.step = step;
+            input.value = typeof val === 'number' ? val : 0;
+            input.addEventListener('input', applyRocketBuilderForm);
+            input.addEventListener('change', applyRocketBuilderForm);
+            const valSpan = document.createElement('span');
+            valSpan.className = 'rocket-builder-value';
+            valSpan.textContent = input.value;
+            row.appendChild(labelEl);
+            row.appendChild(input);
+            row.appendChild(valSpan);
+            content.appendChild(row);
+        });
+    }
+
+    // Update tab button active state
+    document.querySelectorAll('.rocket-builder-tab').forEach((btn) => btn.classList.remove('active'));
+    const activeBtn = document.getElementById(`rocket-builder-tab-${t}`);
+    if (activeBtn) activeBtn.classList.add('active');
+}
+
+function applyRocketBuilderForm() {
+    const config = JSON.parse(JSON.stringify(getRocketConfig()));
+    ROCKET_BUILDER_SCHEMA.forEach(({ path }) => {
+        const input = document.querySelector(`[data-path="${path}"]`);
+        if (input && input.value !== '') {
+            const num = parseFloat(input.value);
+            if (!isNaN(num)) setByPath(config, path, num);
+        }
+    });
+    setRocketConfig(config);
+    // Update value displays
+    ROCKET_BUILDER_SCHEMA.forEach(({ path }) => {
+        const input = document.querySelector(`[data-path="${path}"]`);
+        const valSpan = input?.parentElement?.querySelector('.rocket-builder-value');
+        if (input && valSpan) valSpan.textContent = input.value;
+    });
+}
+
+function showRocketBuilder() {
+    const overlay = document.getElementById('rocket-builder-overlay');
+    const wrapper = document.getElementById('rocket-builder-wrapper');
+    if (overlay && wrapper) {
+        rocketBuilderActiveTab = 'basic';
+        populateRocketBuilderContent('basic');
+        overlay.style.display = 'block';
+        wrapper.style.display = 'flex';
+        setTimeout(() => {
+            overlay.classList.add('show');
+            wrapper.classList.add('show');
+        }, 10);
+    }
+}
+
+function hideRocketBuilder() {
+    const overlay = document.getElementById('rocket-builder-overlay');
+    const wrapper = document.getElementById('rocket-builder-wrapper');
+    if (overlay && wrapper) {
+        overlay.classList.remove('show');
+        wrapper.classList.remove('show');
+        setTimeout(() => {
+            overlay.style.display = 'none';
+            wrapper.style.display = 'none';
+        }, 300);
+    }
+}
+
 // Initialize menu event handlers
 function initMenu() {
     const menuBtn = document.getElementById('menu-btn');
@@ -656,6 +931,11 @@ function initMenu() {
     const startGuidedBtn = document.getElementById('start-guided-btn');
     const startOrbitalBtn = document.getElementById('start-orbital-btn');
     const presetBtns = document.querySelectorAll('.preset-btn');
+    const buildRocketBtn = document.getElementById('build-rocket-btn');
+    const rocketBuilderCloseBtn = document.getElementById('rocket-builder-close-btn');
+    const rocketBuilderDoneBtn = document.getElementById('rocket-builder-done-btn');
+    const rocketBuilderOverlay = document.getElementById('rocket-builder-overlay');
+    const rocketBuilderResetBtn = document.getElementById('rocket-builder-reset-btn');
     
     if (menuBtn) {
         menuBtn.addEventListener('click', showMenu);
@@ -667,6 +947,33 @@ function initMenu() {
     
     if (menuOverlay) {
         menuOverlay.addEventListener('click', hideMenu);
+    }
+    
+    if (buildRocketBtn) {
+        buildRocketBtn.addEventListener('click', showRocketBuilder);
+    }
+    if (rocketBuilderCloseBtn) {
+        rocketBuilderCloseBtn.addEventListener('click', hideRocketBuilder);
+    }
+    if (rocketBuilderDoneBtn) {
+        rocketBuilderDoneBtn.addEventListener('click', hideRocketBuilder);
+    }
+    if (rocketBuilderOverlay) {
+        rocketBuilderOverlay.addEventListener('click', hideRocketBuilder);
+    }
+    if (rocketBuilderResetBtn) {
+        rocketBuilderResetBtn.addEventListener('click', () => {
+            resetToDefault();
+            populateRocketBuilderContent(rocketBuilderActiveTab);
+        });
+    }
+    const rocketBuilderTabBasic = document.getElementById('rocket-builder-tab-basic');
+    const rocketBuilderTabAdvanced = document.getElementById('rocket-builder-tab-advanced');
+    if (rocketBuilderTabBasic) {
+        rocketBuilderTabBasic.addEventListener('click', () => populateRocketBuilderContent('basic'));
+    }
+    if (rocketBuilderTabAdvanced) {
+        rocketBuilderTabAdvanced.addEventListener('click', () => populateRocketBuilderContent('advanced'));
     }
     
     if (startManualBtn) {

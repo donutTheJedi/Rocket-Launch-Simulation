@@ -1,4 +1,5 @@
-import { G, EARTH_MASS, EARTH_RADIUS, ROCKET_CONFIG, GUIDANCE_CONFIG } from './constants.js';
+import { G, EARTH_MASS, EARTH_RADIUS, GUIDANCE_CONFIG } from './constants.js';
+import { getRocketConfig } from './rocketConfig.js';
 import { getTotalMass } from './state.js';
 import { getAtmosphericDensity, getAirspeed, getGravity } from './physics.js';
 import { predictOrbit, computeRemainingDeltaV } from './orbital.js';
@@ -618,8 +619,8 @@ export function computeGuidance(state, dt) {
                 const deltaV_needed = Math.max(0, v_at_apo_required - v_at_apo_current);
                 
                 let burnTime = 0;
-                if (state.currentStage < ROCKET_CONFIG.stages.length && deltaV_needed > 0) {
-                    const stage = ROCKET_CONFIG.stages[state.currentStage];
+                if (state.currentStage < getRocketConfig().stages.length && deltaV_needed > 0) {
+                    const stage = getRocketConfig().stages[state.currentStage];
                     const currentMass = getTotalMass();
                     const thrust = stage.thrustVac;
                     if (thrust > 0) {
@@ -680,8 +681,8 @@ export function computeGuidance(state, dt) {
             const deltaV_needed = Math.max(0, v_at_peri_current - v_at_peri_required);
             
             let burnTime = 0;
-            if (state.currentStage < ROCKET_CONFIG.stages.length && deltaV_needed > 0) {
-                const stage = ROCKET_CONFIG.stages[state.currentStage];
+            if (state.currentStage < getRocketConfig().stages.length && deltaV_needed > 0) {
+                const stage = getRocketConfig().stages[state.currentStage];
                 const currentMass = getTotalMass();
                 const thrust = stage.thrustVac;
                 if (thrust > 0) {
@@ -743,8 +744,8 @@ export function computeGuidance(state, dt) {
             const circDeltaV = Math.max(0, v_circular - v_at_apo);
             
             let burnTime = 0;
-            if (state.currentStage < ROCKET_CONFIG.stages.length && circDeltaV > 0) {
-                const stage = ROCKET_CONFIG.stages[state.currentStage];
+            if (state.currentStage < getRocketConfig().stages.length && circDeltaV > 0) {
+                const stage = getRocketConfig().stages[state.currentStage];
                 const currentMass = getTotalMass();
                 const thrust = stage.thrustVac;
                 

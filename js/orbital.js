@@ -1,4 +1,5 @@
-import { G, EARTH_MASS, EARTH_RADIUS, ROCKET_CONFIG } from './constants.js';
+import { G, EARTH_MASS, EARTH_RADIUS } from './constants.js';
+import { getRocketConfig } from './rocketConfig.js';
 import { state } from './state.js';
 
 // ============================================================================
@@ -59,21 +60,21 @@ export function computeRemainingDeltaV(stateObj) {
     let totalDeltaV = 0;
     
     // Current stage
-    if (stateObj.currentStage < ROCKET_CONFIG.stages.length) {
-        const stage = ROCKET_CONFIG.stages[stateObj.currentStage];
+    if (stateObj.currentStage < getRocketConfig().stages.length) {
+        const stage = getRocketConfig().stages[stateObj.currentStage];
         const propellant = stateObj.propellantRemaining[stateObj.currentStage];
         
         if (propellant > 0) {
             // Mass at start of current burn
-            let massInitial = ROCKET_CONFIG.payload.mass;
-            if (!stateObj.fairingJettisoned) massInitial += ROCKET_CONFIG.fairing.mass;
+            let massInitial = getRocketConfig().payload.mass;
+            if (!stateObj.fairingJettisoned) massInitial += getRocketConfig().fairing.mass;
             
             // Add current stage
             massInitial += stage.dryMass + propellant;
             
             // Add future stages
-            for (let i = stateObj.currentStage + 1; i < ROCKET_CONFIG.stages.length; i++) {
-                massInitial += ROCKET_CONFIG.stages[i].dryMass + stateObj.propellantRemaining[i];
+            for (let i = stateObj.currentStage + 1; i < getRocketConfig().stages.length; i++) {
+                massInitial += getRocketConfig().stages[i].dryMass + stateObj.propellantRemaining[i];
             }
             
             // Mass at end (after burning current stage propellant)
@@ -88,19 +89,19 @@ export function computeRemainingDeltaV(stateObj) {
     }
     
     // Future stages (full burns)
-    for (let i = stateObj.currentStage + 1; i < ROCKET_CONFIG.stages.length; i++) {
-        const stage = ROCKET_CONFIG.stages[i];
+    for (let i = stateObj.currentStage + 1; i < getRocketConfig().stages.length; i++) {
+        const stage = getRocketConfig().stages[i];
         const propellant = stateObj.propellantRemaining[i];
         
         if (propellant > 0) {
             // Mass at start of this stage's burn
-            let massInitial = ROCKET_CONFIG.payload.mass;
+            let massInitial = getRocketConfig().payload.mass;
             // Fairing should be jettisoned by upper stage
             massInitial += stage.dryMass + propellant;
             
             // Add any stages after this
-            for (let j = i + 1; j < ROCKET_CONFIG.stages.length; j++) {
-                massInitial += ROCKET_CONFIG.stages[j].dryMass + stateObj.propellantRemaining[j];
+            for (let j = i + 1; j < getRocketConfig().stages.length; j++) {
+                massInitial += getRocketConfig().stages[j].dryMass + stateObj.propellantRemaining[j];
             }
             
             const massFinal = massInitial - propellant;
@@ -120,16 +121,16 @@ export function computeInitialDeltaV() {
     const g0 = 9.81;
     let totalDeltaV = 0;
     
-    for (let i = 0; i < ROCKET_CONFIG.stages.length; i++) {
-        const stage = ROCKET_CONFIG.stages[i];
+    for (let i = 0; i < getRocketConfig().stages.length; i++) {
+        const stage = getRocketConfig().stages[i];
         const propellant = stage.propellantMass;
         
         // Mass at start of this stage
-        let massInitial = ROCKET_CONFIG.payload.mass + ROCKET_CONFIG.fairing.mass;
+        let massInitial = getRocketConfig().payload.mass + getRocketConfig().fairing.mass;
         massInitial += stage.dryMass + propellant;
         
-        for (let j = i + 1; j < ROCKET_CONFIG.stages.length; j++) {
-            massInitial += ROCKET_CONFIG.stages[j].dryMass + ROCKET_CONFIG.stages[j].propellantMass;
+        for (let j = i + 1; j < getRocketConfig().stages.length; j++) {
+            massInitial += getRocketConfig().stages[j].dryMass + getRocketConfig().stages[j].propellantMass;
         }
         
         const massFinal = massInitial - propellant;

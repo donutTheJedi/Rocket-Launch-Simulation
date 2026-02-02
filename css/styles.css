@@ -688,6 +688,301 @@ button:disabled {
     border-radius: 4px;
 }
 
+/* Build your own rocket button */
+.build-rocket-btn {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
+    background: #222;
+    border: 1px solid #0ff;
+    color: #0ff;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.build-rocket-btn:hover {
+    background: rgba(0, 255, 255, 0.2);
+    border-color: #0f0;
+    color: #0f0;
+}
+
+/* Rocket builder overlay and wrapper */
+.rocket-builder-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 9998;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.rocket-builder-overlay.show {
+    opacity: 1;
+}
+
+.rocket-builder-wrapper {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.95);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+    max-height: 90vh;
+    opacity: 0;
+    transition: opacity 0.3s, transform 0.3s;
+}
+
+.rocket-builder-wrapper.show {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+}
+
+.rocket-builder-panel {
+    width: min(95vw, 900px);
+    height: 70vh;
+    max-height: 70vh;
+    background: #111;
+    border: 2px solid #0ff;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex-shrink: 0;
+    box-sizing: border-box;
+}
+
+.rocket-builder-header {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    border-bottom: 1px solid #0ff;
+}
+
+.rocket-builder-header h2 {
+    margin: 0;
+    color: #0ff;
+    font-size: 18px;
+}
+
+.rocket-builder-note {
+    flex-shrink: 0;
+    padding: 8px 15px;
+    margin: 0;
+    font-size: 11px;
+    color: #888;
+}
+
+.rocket-builder-tabs {
+    flex-shrink: 0;
+    display: flex;
+    gap: 0;
+    padding: 0 15px 10px;
+    border-bottom: 1px solid #333;
+}
+
+.rocket-builder-tab {
+    padding: 8px 20px;
+    background: #222;
+    border: 1px solid #444;
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+    color: #888;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: -1px;
+}
+
+.rocket-builder-tab:hover {
+    color: #0ff;
+    border-color: #0ff;
+}
+
+.rocket-builder-tab.active {
+    background: rgba(0, 255, 255, 0.1);
+    border-color: #0ff;
+    color: #0ff;
+}
+
+.rocket-builder-actions {
+    flex-shrink: 0;
+    padding: 0 15px 10px;
+}
+
+.rocket-builder-reset-btn {
+    padding: 8px 12px;
+    background: #333;
+    border: 1px solid #f80;
+    color: #f80;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.rocket-builder-reset-btn:hover {
+    background: #f80;
+    color: #000;
+}
+
+.rocket-builder-content {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: hidden;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    -webkit-overflow-scrolling: touch;
+}
+
+.rocket-builder-content.advanced-tab {
+    overflow-y: scroll;
+    overflow-x: hidden;
+    padding: 10px 15px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 20px;
+    align-content: start;
+}
+
+/* Basic tab: single column params + fixed diagram (no scroll on diagram) */
+.rocket-builder-content.basic-tab {
+    display: flex;
+    flex-direction: row;
+    padding: 0;
+    overflow: hidden;
+}
+
+.rocket-builder-basic-layout {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.rocket-builder-params {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 10px 15px;
+    -webkit-overflow-scrolling: touch;
+}
+
+.rocket-builder-resizer {
+    flex: 0 0 8px;
+    cursor: col-resize;
+    background: #222;
+    border-left: 1px solid #333;
+    border-right: 1px solid #333;
+    position: relative;
+}
+
+.rocket-builder-resizer::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 2px;
+    height: 24px;
+    background: #0ff;
+    border-radius: 1px;
+    opacity: 0.6;
+}
+
+.rocket-builder-resizer:hover {
+    background: rgba(0, 255, 255, 0.1);
+}
+
+.rocket-builder-resizer:hover::after {
+    opacity: 1;
+}
+
+.rocket-builder-diagram {
+    flex: 0 0 auto;
+    min-width: 120px;
+    border-left: 1px solid #333;
+    padding: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.rocket-builder-diagram-rect {
+    /* Size set by JS to fit container while keeping aspect ratio 160:200 */
+    flex-shrink: 0;
+    background: rgba(0, 255, 255, 0.08);
+    border: 1px solid #0ff;
+    border-radius: 4px;
+}
+
+.rocket-builder-section {
+    grid-column: 1 / -1;
+    margin: 15px 0 8px;
+    padding-bottom: 4px;
+    color: #0ff;
+    font-size: 14px;
+    border-bottom: 1px solid #333;
+}
+
+.rocket-builder-section:first-child {
+    margin-top: 0;
+}
+
+.rocket-builder-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.rocket-builder-row label {
+    flex: 0 0 140px;
+    font-size: 11px;
+    color: #aaa;
+}
+
+.rocket-builder-row input {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 8px;
+    background: #222;
+    border: 1px solid #444;
+    color: #0f0;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+}
+
+.rocket-builder-row input:focus {
+    outline: none;
+    border-color: #0ff;
+}
+
+.rocket-builder-value {
+    flex: 0 0 52px;
+    font-size: 11px;
+    color: #888;
+}
+
+/* Done button outside the box */
+.rocket-builder-footer {
+    flex-shrink: 0;
+    padding: 0;
+}
+
+.rocket-builder-footer .menu-start-btn {
+    margin: 0;
+    min-width: 120px;
+}
+
 /* Manual Pitch Controls */
 #manual-pitch-controls {
     position: fixed;
