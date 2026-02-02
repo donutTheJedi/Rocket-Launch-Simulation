@@ -682,6 +682,82 @@ export function calculateRocketCOG() {
 }
 
 /**
+ * Calculate COG for the full rocket at pad (both stages, full propellant, fairing on).
+ * Does not depend on flight state. Used by the Rocket Builder diagram.
+ *
+ * @param {Object} [config] - Rocket config (default: getRocketConfig())
+ * @returns {Object} { cog, cogFraction, rocketLength, components }
+ */
+export function calculateRocketCOGAtPad(config) {
+    const cfg = config || getRocketConfig();
+    const stages = cfg.stages;
+    const payload = cfg.payload;
+    const fairing = cfg.fairing;
+
+    let totalMass = 0;
+    let momentSum = 0;
+    let currentBottom = 0;
+    const components = [];
+
+    // Helper: stage COG from config and propellant mass (no state)
+    function stageCOGFromConfig(c, stageIndex, propellantMass) {
+        const st = c.stages[stageIndex];
+        const tankRadius = st.diameter / 2;
+        const tankCrossSection = Math.PI * tankRadius * tankRadius;
+        const tankHeight = st.length * st.tankLengthRatio;
+        const currentFuelVolume = propellantMass / c.propellantDensity;
+        const fuelHeight = Math.min(currentFuelVolume / tankCrossSection, tankHeight);
+        const engineLength = st.engineLength;
+        const tankBottom = engineLength;
+        const engineMass = st.dryMass * st.dryMassEngineFraction;
+        const structureMass = st.dryMass * (1 - st.dryMassEngineFraction);
+        const engineCOG = engineLength / 2;
+        const structureCOG = st.length / 2;
+        const fuelCOG = tankBottom + (fuelHeight / 2);
+        const mass = st.dryMass + propellantMass;
+        if (mass === 0) return { stageCOG: st.length / 2, totalMass: 0 };
+        const moment = (engineMass * engineCOG) + (structureMass * structureCOG) + (propellantMass * fuelCOG);
+        return { stageCOG: moment / mass, totalMass: mass };
+    }
+
+    // Stage 1 (full propellant)
+    const s1 = stageCOGFromConfig(cfg, 0, stages[0].propellantMass);
+    const s1Position = currentBottom + s1.stageCOG;
+    totalMass += s1.totalMass;
+    momentSum += s1.totalMass * s1Position;
+    components.push({ name: 'Stage 1', mass: s1.totalMass, position: s1Position, bottom: currentBottom, length: stages[0].length });
+    currentBottom += stages[0].length;
+
+    // Stage 2 (full propellant)
+    const s2 = stageCOGFromConfig(cfg, 1, stages[1].propellantMass);
+    const s2Position = currentBottom + s2.stageCOG;
+    totalMass += s2.totalMass;
+    momentSum += s2.totalMass * s2Position;
+    components.push({ name: 'Stage 2', mass: s2.totalMass, position: s2Position, bottom: currentBottom, length: stages[1].length });
+    currentBottom += stages[1].length;
+
+    // Payload
+    const payloadCOG = currentBottom + (payload.length / 2);
+    totalMass += payload.mass;
+    momentSum += payload.mass * payloadCOG;
+    components.push({ name: 'Payload', mass: payload.mass, position: payloadCOG, bottom: currentBottom, length: payload.length });
+    currentBottom += payload.length;
+
+    // Fairing (cone COG at ~1/3 from base)
+    const fairingCOG = currentBottom + (fairing.length / 3);
+    totalMass += fairing.mass;
+    momentSum += fairing.mass * fairingCOG;
+    components.push({ name: 'Fairing', mass: fairing.mass, position: fairingCOG, bottom: currentBottom, length: fairing.length });
+    currentBottom += fairing.length;
+
+    const rocketLength = currentBottom;
+    const overallCOG = totalMass > 0 ? momentSum / totalMass : 0;
+    const cogFraction = rocketLength > 0 ? overallCOG / rocketLength : 0.5;
+
+    return { cog: overallCOG, cogFraction, rocketLength, totalMass, components };
+}
+
+/**
  * ============================================================================
  * GIMBAL AND ROTATIONAL DYNAMICS
  * ============================================================================

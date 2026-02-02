@@ -911,14 +911,24 @@ button:disabled {
     border-left: 1px solid #333;
     padding: 15px;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     background: rgba(0, 0, 0, 0.2);
 }
 
-.rocket-builder-diagram-rect {
-    /* Size set by JS to fit container while keeping aspect ratio 160:200 */
+.rocket-builder-diagram-hint {
+    font-size: 10px;
+    color: #888;
+    margin: 0 0 8px 0;
     flex-shrink: 0;
+}
+
+.rocket-builder-diagram-canvas {
+    display: block;
+    flex: 1 1 0;
+    min-height: 160px;
+    width: 100%;
     background: rgba(0, 255, 255, 0.08);
     border: 1px solid #0ff;
     border-radius: 4px;
@@ -964,6 +974,13 @@ button:disabled {
 .rocket-builder-row input:focus {
     outline: none;
     border-color: #0ff;
+}
+
+.rocket-builder-row input:disabled {
+    background: #1a1a1a;
+    border-color: #333;
+    color: #666;
+    cursor: not-allowed;
 }
 
 .rocket-builder-value {

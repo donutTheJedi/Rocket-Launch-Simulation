@@ -13,8 +13,13 @@ A realistic 2D physics simulation of orbital mechanics and rocket launches from 
 ![Rocket Simulation](https://img.shields.io/badge/Status-Active-success)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
+## 🌟 Part I think is coolest
+
+**Rocket Builder with live diagram** — In the menu, "Build your own rocket" opens a panel where you can tweak stages, payload, and fairing. The Basic tab shows an interactive 2D diagram of your rocket: drag segment boundaries to change length and edges to change diameter. COG and CoP at pad are drawn in real time, and starting acceleration turns red if it's below 1 g (so you know the rocket would crash). Its so amazing to test extreme cases and just play around with your ideas, I havent tested it but it should work with model rockets
+
 ## 📋 Table of Contents
 
+- [Part I think is coolest](#-part-i-think-is-coolest)
 - [Features](#-features)
 - [Getting Started](#-getting-started)
 - [Game Modes](#-game-modes)
@@ -479,7 +484,10 @@ Add real-time plotting during flight and comprehensive post-flight analysis.
 
 ## ⚠️ Current Issues
 
-- None currently reported. All major systems operational.
+- Engine shuts off in manual control
+- When clicking in and out of UI it can bug
+- Poor phone formating
+-
 
 ## 🐛 Known Limitations
 

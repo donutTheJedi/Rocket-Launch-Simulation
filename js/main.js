@@ -1,9 +1,10 @@
 import { EARTH_RADIUS, EARTH_ROTATION, KARMAN_LINE, GUIDANCE_CONFIG } from './constants.js';
-import { getRocketConfig, setRocketConfig, resetToDefault } from './rocketConfig.js';
+import { getRocketConfig, setRocketConfig, resetToDefault, getMaxPropellantForStage } from './rocketConfig.js';
 import { state, initState, getAltitude, getTotalMass, resetCurrentMission, spawnInOrbit } from './state.js';
 import { getGravity, getCurrentThrust, getMassFlowRate, getAtmosphericDensity, getAirspeed, getDrag, 
          integrateRotationalDynamics, getRocketThrustDirection, calculateCommandedGimbal,
-         calculateAngleOfAttack, calculateAerodynamicForces, calculateAerodynamicTorque } from './physics.js';
+         calculateAngleOfAttack, calculateAerodynamicForces, calculateAerodynamicTorque,
+         calculateRocketCOGAtPad, calculateCenterOfPressure } from './physics.js';
 import { calculateOrbitalElements } from './orbital.js';
 import { computeGuidance, guidanceState, resetGuidance } from './guidance.js';
 import { addEvent } from './events.js';
@@ -652,14 +653,13 @@ function initTopLinksPosition() {
 // ========== Rocket builder ==========
 // Schema: path, label, min, max, step, tab ('basic' | 'advanced')
 const ROCKET_BUILDER_SCHEMA = [
-    // Stage 1 - Basic: thrust, mass, diameter, length, propellant, drag coeff
+    // Stage 1 - Basic: dry mass, thrust, diameter, length, propellant (locked), drag coeff
     { path: 'stages.0.dryMass', label: 'Stage 1 Dry mass (kg)', min: 5000, max: 50000, step: 100, tab: 'basic' },
-    { path: 'stages.0.propellantMass', label: 'Stage 1 Propellant (kg)', min: 100000, max: 600000, step: 1000, tab: 'basic' },
     { path: 'stages.0.thrust', label: 'Stage 1 Thrust SL (N)', min: 1e6, max: 15e6, step: 100000, tab: 'basic' },
     { path: 'stages.0.thrustVac', label: 'Stage 1 Thrust vac (N)', min: 1e6, max: 15e6, step: 100000, tab: 'basic' },
     { path: 'stages.0.diameter', label: 'Stage 1 Diameter (m)', min: 2, max: 6, step: 0.1, tab: 'basic' },
     { path: 'stages.0.length', label: 'Stage 1 Length (m)', min: 20, max: 60, step: 1, tab: 'basic' },
-    { path: 'stages.0.dragCoeff', label: 'Stage 1 Drag coeff', min: 0.2, max: 0.5, step: 0.01, tab: 'basic' },
+    { path: 'stages.0.propellantMass', label: 'Stage 1 Propellant (kg)', min: 100000, max: 600000, step: 1000, tab: 'basic', locked: true },
     // Stage 1 - Advanced
     { path: 'stages.0.isp', label: 'Stage 1 Isp SL (s)', min: 250, max: 350, step: 1, tab: 'advanced' },
     { path: 'stages.0.ispVac', label: 'Stage 1 Isp vac (s)', min: 280, max: 380, step: 1, tab: 'advanced' },
@@ -671,12 +671,11 @@ const ROCKET_BUILDER_SCHEMA = [
     { path: 'stages.0.gimbalPoint', label: 'Stage 1 Gimbal point (m)', min: 0.2, max: 1.5, step: 0.1, tab: 'advanced' },
     // Stage 2 - Basic
     { path: 'stages.1.dryMass', label: 'Stage 2 Dry mass (kg)', min: 1000, max: 8000, step: 100, tab: 'basic' },
-    { path: 'stages.1.propellantMass', label: 'Stage 2 Propellant (kg)', min: 20000, max: 150000, step: 500, tab: 'basic' },
     { path: 'stages.1.thrust', label: 'Stage 2 Thrust SL (N)', min: 100000, max: 2e6, step: 10000, tab: 'basic' },
     { path: 'stages.1.thrustVac', label: 'Stage 2 Thrust vac (N)', min: 100000, max: 2e6, step: 10000, tab: 'basic' },
     { path: 'stages.1.diameter', label: 'Stage 2 Diameter (m)', min: 2, max: 6, step: 0.1, tab: 'basic' },
     { path: 'stages.1.length', label: 'Stage 2 Length (m)', min: 5, max: 25, step: 0.5, tab: 'basic' },
-    { path: 'stages.1.dragCoeff', label: 'Stage 2 Drag coeff', min: 0.2, max: 0.5, step: 0.01, tab: 'basic' },
+    { path: 'stages.1.propellantMass', label: 'Stage 2 Propellant (kg)', min: 20000, max: 150000, step: 500, tab: 'basic', locked: true },
     // Stage 2 - Advanced
     { path: 'stages.1.isp', label: 'Stage 2 Isp SL (s)', min: 300, max: 360, step: 1, tab: 'advanced' },
     { path: 'stages.1.ispVac', label: 'Stage 2 Isp vac (s)', min: 320, max: 380, step: 1, tab: 'advanced' },
@@ -722,6 +721,165 @@ function setByPath(obj, path, value) {
 
 let rocketBuilderActiveTab = 'basic';
 
+/** Diagram state for hit-test (set by drawRocketBuilderDiagram). */
+let rocketBuilderDiagramState = {
+    segments: [],
+    pad: 0,
+    scale: 0,
+    centerX: 0,
+    drawHeight: 0,
+    totalLength: 0,
+    canvasWidth: 0,
+    canvasHeight: 0
+};
+
+/** Active drag handle: { type: 'boundary', segmentIndex } | { type: 'diameter', segmentIndex, side: 'left'|'right' } */
+let rocketBuilderActiveHandle = null;
+
+const BOUNDARY_HIT_PX = 6;
+const DIAMETER_HIT_PX = 8;
+
+function getSchemaEntry(path) {
+    return ROCKET_BUILDER_SCHEMA.find((e) => e.path === path);
+}
+
+function formatOneDecimal(num) {
+    const n = typeof num === 'number' ? num : parseFloat(num);
+    return isNaN(n) ? '' : Number(n).toFixed(1);
+}
+
+function syncBuilderInput(path, value) {
+    const input = document.querySelector(`[data-path="${path}"]`);
+    if (!input) return;
+    const num = typeof value === 'number' ? value : parseFloat(value);
+    const str = formatOneDecimal(num);
+    input.value = str;
+    const valSpan = input.parentElement?.querySelector('.rocket-builder-value');
+    if (valSpan) valSpan.textContent = str;
+}
+
+/**
+ * Draw the rocket diagram on the builder canvas: stacked segments, COG and CoP at pad.
+ * Sizes canvas to container; stores segment bounds and transform in rocketBuilderDiagramState for hit-test.
+ */
+function drawRocketBuilderDiagram() {
+    const canvas = document.getElementById('rocket-builder-canvas');
+    if (!canvas) return;
+    const pad = 20;
+    const cw = canvas.clientWidth || 0;
+    const ch = canvas.clientHeight || 0;
+    if (cw <= 0 || ch <= 0) return;
+    if (canvas.width !== cw || canvas.height !== ch) {
+        canvas.width = cw;
+        canvas.height = ch;
+    }
+    const ctx = canvas.getContext('2d');
+    const config = getRocketConfig();
+    const stages = config.stages;
+    const payload = config.payload;
+    const fairing = config.fairing;
+    const totalLength = config.totalLength || (stages[0].length + stages[1].length + payload.length + fairing.length);
+    const maxDiam = Math.max(stages[0].diameter, stages[1].diameter, payload.diameter, fairing.diameter);
+    const drawWidth = cw - 2 * pad;
+    const drawHeight = ch - 2 * pad;
+    if (drawWidth <= 0 || drawHeight <= 0 || totalLength <= 0) return;
+    const scaleByHeight = drawHeight / totalLength;
+    const scaleByWidth = drawWidth / maxDiam;
+    const scale = Math.min(scaleByHeight, scaleByWidth);
+    const centerX = cw / 2;
+    const bottomPad = pad;
+    // Rocket bottom (z=0) at bottom of draw area, top at top: screenY = bottomPad + (1 - z/totalLength) * drawHeight
+    const drawHeightUsed = totalLength * scale;
+    const drawWidthUsed = maxDiam * scale;
+    const halfW = drawWidthUsed / 2;
+
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(0, 0, cw, ch);
+
+    const segments = [];
+    let zBottom = 0;
+    const segs = [
+        { length: stages[0].length, diameter: stages[0].diameter, pathLength: 'stages.0.length', pathDiameter: 'stages.0.diameter', fill: '#6a6a6a' },
+        { length: stages[1].length, diameter: stages[1].diameter, pathLength: 'stages.1.length', pathDiameter: 'stages.1.diameter', fill: '#5a5a5a' },
+        { length: payload.length, diameter: payload.diameter, pathLength: 'payload.length', pathDiameter: 'payload.diameter', fill: '#4a7a9a' },
+        { length: fairing.length, diameter: fairing.diameter, pathLength: 'fairing.length', pathDiameter: 'fairing.diameter', fill: '#8a4a4a' }
+    ];
+    for (const seg of segs) {
+        const zTop = zBottom + seg.length;
+        const yBottom = bottomPad + (1 - zBottom / totalLength) * drawHeightUsed;
+        const yTop = bottomPad + (1 - zTop / totalLength) * drawHeightUsed;
+        const segHalfW = (seg.diameter / 2) * scale;
+        const xLeft = centerX - segHalfW;
+        const xRight = centerX + segHalfW;
+        segments.push({ bottom: zBottom, top: zTop, diameter: seg.diameter, pathLength: seg.pathLength, pathDiameter: seg.pathDiameter, yBottom, yTop, xLeft, xRight });
+        if (seg.pathLength === 'fairing.length') {
+            ctx.fillStyle = seg.fill;
+            ctx.beginPath();
+            ctx.moveTo(centerX, yTop);
+            ctx.lineTo(xLeft, yBottom);
+            ctx.lineTo(xRight, yBottom);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = '#999';
+            ctx.stroke();
+        } else {
+            ctx.fillStyle = seg.fill;
+            ctx.fillRect(xLeft, yTop, seg.diameter * scale, yBottom - yTop);
+            ctx.strokeStyle = '#999';
+            ctx.strokeRect(xLeft, yTop, seg.diameter * scale, yBottom - yTop);
+        }
+        zBottom = zTop;
+    }
+
+    const cogData = calculateRocketCOGAtPad(config);
+    const copPosition = calculateCenterOfPressure(0, totalLength);
+    const cogZ = cogData.cog;
+    const cogY = bottomPad + (1 - cogZ / totalLength) * drawHeightUsed;
+    const copY = bottomPad + (1 - copPosition / totalLength) * drawHeightUsed;
+
+    ctx.strokeStyle = '#0f0';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(centerX - halfW - 8, cogY);
+    ctx.lineTo(centerX + halfW + 8, cogY);
+    ctx.stroke();
+    ctx.fillStyle = '#0f0';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('COG', centerX + halfW + 10, cogY + 4);
+
+    ctx.strokeStyle = '#ff0';
+    ctx.beginPath();
+    ctx.moveTo(centerX - halfW - 8, copY);
+    ctx.lineTo(centerX + halfW + 8, copY);
+    ctx.stroke();
+    ctx.fillStyle = '#ff0';
+    ctx.fillText('CoP', centerX + halfW + 10, copY + 4);
+
+    const thrustSl = stages[0].thrust;
+    const totalMass = cogData.totalMass;
+    const accelG = totalMass > 0 ? (thrustSl / totalMass) / 9.81 : 0;
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = accelG < 1 ? '#f00' : '#0f0';
+    ctx.fillText(`Starting accel: ${accelG.toFixed(2)} g`, cw - 4, pad + 12);
+
+    rocketBuilderDiagramState = {
+        segments,
+        pad,
+        scale,
+        centerX,
+        drawHeight: drawHeightUsed,
+        totalLength,
+        canvasWidth: cw,
+        canvasHeight: ch,
+        bottomPad,
+        centerY: bottomPad + drawHeightUsed / 2
+    };
+}
+
 function populateRocketBuilderContent(tab) {
     const t = tab !== undefined ? tab : rocketBuilderActiveTab;
     rocketBuilderActiveTab = t;
@@ -740,42 +898,40 @@ function populateRocketBuilderContent(tab) {
         layout.className = 'rocket-builder-basic-layout';
         const paramsContainer = document.createElement('div');
         paramsContainer.className = 'rocket-builder-params';
+        const hint = document.createElement('p');
+        hint.className = 'rocket-builder-diagram-hint';
+        hint.textContent = 'Drag boundaries for length, sides for diameter.';
         const resizer = document.createElement('div');
         resizer.className = 'rocket-builder-resizer';
         resizer.setAttribute('aria-label', 'Drag to resize diagram');
         const diagramContainer = document.createElement('div');
         diagramContainer.className = 'rocket-builder-diagram';
+        diagramContainer.setAttribute('aria-label', 'Rocket diagram: drag boundaries for length, sides for diameter');
         const DIAGRAM_MIN = 120;
         const DIAGRAM_MAX = 420;
         const DIAGRAM_DEFAULT = 220;
         diagramContainer.style.width = DIAGRAM_DEFAULT + 'px';
-        const rect = document.createElement('div');
-        rect.className = 'rocket-builder-diagram-rect';
-        diagramContainer.appendChild(rect);
+        const canvas = document.createElement('canvas');
+        canvas.id = 'rocket-builder-canvas';
+        canvas.className = 'rocket-builder-diagram-canvas';
         layout.appendChild(paramsContainer);
         layout.appendChild(resizer);
+        diagramContainer.appendChild(hint);
+        diagramContainer.appendChild(canvas);
         layout.appendChild(diagramContainer);
         content.appendChild(layout);
 
-        function sizeDiagramRect() {
-            const pad = 30;
-            const w = diagramContainer.clientWidth - pad;
-            const h = diagramContainer.clientHeight - pad;
-            if (w <= 0 || h <= 0) {
-                rect.style.width = '160px';
-                rect.style.height = '200px';
-                return;
+        function sizeAndDrawDiagram() {
+            const w = canvas.clientWidth;
+            const h = canvas.clientHeight;
+            if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
+                canvas.width = w;
+                canvas.height = h;
             }
-            const scaleByWidth = w / 160;
-            const scaleByHeight = h / 200;
-            const scale = Math.min(scaleByWidth, scaleByHeight);
-            const rectW = 160 * scale;
-            const rectH = 200 * scale;
-            rect.style.width = rectW + 'px';
-            rect.style.height = rectH + 'px';
+            drawRocketBuilderDiagram();
         }
-        sizeDiagramRect();
-        const diagramResizeObserver = new ResizeObserver(() => sizeDiagramRect());
+        sizeAndDrawDiagram();
+        const diagramResizeObserver = new ResizeObserver(() => sizeAndDrawDiagram());
         diagramResizeObserver.observe(diagramContainer);
 
         // Drag to resize diagram
@@ -800,7 +956,106 @@ function populateRocketBuilderContent(tab) {
             document.addEventListener('mouseup', onUp);
         });
 
-        schemaForTab.forEach(({ path, label, min, max, step }) => {
+        // Diagram drag: height (boundaries) and diameter (edges)
+        function toCanvasCoords(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / (rect.width || 1);
+            const scaleY = canvas.height / (rect.height || 1);
+            return {
+                x: (e.clientX - rect.left) * scaleX,
+                y: (e.clientY - rect.top) * scaleY
+            };
+        }
+        canvas.addEventListener('mousedown', (e) => {
+            const { x: offsetX, y: offsetY } = toCanvasCoords(e);
+            const st = rocketBuilderDiagramState;
+            if (!st.segments.length) return;
+            for (let i = 0; i < st.segments.length; i++) {
+                const seg = st.segments[i];
+                if (Math.abs(offsetY - seg.yTop) <= BOUNDARY_HIT_PX && offsetX >= seg.xLeft - 10 && offsetX <= seg.xRight + 10) {
+                    rocketBuilderActiveHandle = { type: 'boundary', segmentIndex: i };
+                    e.preventDefault();
+                    return;
+                }
+            }
+            for (let i = 0; i < st.segments.length; i++) {
+                const seg = st.segments[i];
+                const inY = offsetY >= seg.yTop && offsetY <= seg.yBottom;
+                if (inY && offsetX >= seg.xLeft - DIAMETER_HIT_PX && offsetX <= seg.xLeft + DIAMETER_HIT_PX) {
+                    rocketBuilderActiveHandle = { type: 'diameter', segmentIndex: i, side: 'left' };
+                    e.preventDefault();
+                    return;
+                }
+                if (inY && offsetX >= seg.xRight - DIAMETER_HIT_PX && offsetX <= seg.xRight + DIAMETER_HIT_PX) {
+                    rocketBuilderActiveHandle = { type: 'diameter', segmentIndex: i, side: 'right' };
+                    e.preventDefault();
+                    return;
+                }
+            }
+        });
+        const onDiagramMouseMove = (e) => {
+            if (!rocketBuilderActiveHandle) return;
+            const { x: offsetX, y: offsetY } = toCanvasCoords(e);
+            const st = rocketBuilderDiagramState;
+            const config = JSON.parse(JSON.stringify(getRocketConfig()));
+            const seg = st.segments[rocketBuilderActiveHandle.segmentIndex];
+            const entryLen = getSchemaEntry(seg.pathLength);
+            const entryDiam = getSchemaEntry(seg.pathDiameter);
+            if (rocketBuilderActiveHandle.type === 'boundary') {
+                const z = st.totalLength * (1 - (offsetY - st.bottomPad) / st.drawHeight);
+                const segBottom = seg.bottom;
+                let newLength = z - segBottom;
+                if (entryLen) {
+                    newLength = Math.max(Number(entryLen.min), Math.min(Number(entryLen.max), newLength));
+                }
+                setByPath(config, seg.pathLength, newLength);
+                const si = rocketBuilderActiveHandle.segmentIndex;
+                if (si <= 1) {
+                    config.stages[si].propellantMass = getMaxPropellantForStage(config.stages[si], config.propellantDensity ?? 923);
+                }
+                setRocketConfig(config);
+                syncBuilderInput(seg.pathLength, newLength);
+                if (si <= 1) syncBuilderInput(`stages.${si}.propellantMass`, config.stages[si].propellantMass);
+            } else {
+                const x = (offsetX - st.centerX) / st.scale;
+                const newRadius = (seg.diameter / 2) + (rocketBuilderActiveHandle.side === 'right' ? x : -x);
+                let newDiam = Math.max(0.1, newRadius * 2);
+                if (entryDiam) {
+                    newDiam = Math.max(Number(entryDiam.min), Math.min(Number(entryDiam.max), newDiam));
+                }
+                setByPath(config, seg.pathDiameter, newDiam);
+                const si = rocketBuilderActiveHandle.segmentIndex;
+                if (si <= 1) {
+                    config.stages[si].propellantMass = getMaxPropellantForStage(config.stages[si], config.propellantDensity ?? 923);
+                }
+                setRocketConfig(config);
+                syncBuilderInput(seg.pathDiameter, newDiam);
+                if (si <= 1) syncBuilderInput(`stages.${si}.propellantMass`, config.stages[si].propellantMass);
+            }
+            drawRocketBuilderDiagram();
+        };
+        const onDiagramMouseUp = () => {
+            if (rocketBuilderActiveHandle) {
+                rocketBuilderActiveHandle = null;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+            }
+        };
+        canvas.addEventListener('mousemove', (e) => {
+            if (rocketBuilderActiveHandle) {
+                document.body.style.cursor = rocketBuilderActiveHandle.type === 'boundary' ? 'ns-resize' : 'ew-resize';
+                document.body.style.userSelect = 'none';
+                onDiagramMouseMove(e);
+            }
+        });
+        document.addEventListener('mouseup', onDiagramMouseUp);
+        canvas.addEventListener('mouseleave', () => {
+            if (!rocketBuilderActiveHandle) return;
+            onDiagramMouseUp();
+        });
+
+        schemaForTab.forEach((entry) => {
+            const { path, label, min, max, step } = entry;
             const isNewSection = path === 'stages.0.dryMass' || path === 'stages.1.dryMass' || path === 'payload.mass' || path === 'fairing.mass' || path === 'fairingJettisonAlt';
             if (isNewSection) {
                 const name = path === 'stages.0.dryMass' ? 'Stage 1' : path === 'stages.1.dryMass' ? 'Stage 2' : path === 'payload.mass' ? 'Payload' : path === 'fairing.mass' ? 'Fairing' : 'Global';
@@ -809,7 +1064,9 @@ function populateRocketBuilderContent(tab) {
                 h.textContent = name;
                 paramsContainer.appendChild(h);
             }
-            const val = getByPath(config, path);
+            const val = entry.locked && path.startsWith('stages.') && path.endsWith('.propellantMass')
+                ? getMaxPropellantForStage(config.stages[path === 'stages.0.propellantMass' ? 0 : 1], config.propellantDensity ?? 923)
+                : getByPath(config, path);
             const row = document.createElement('div');
             row.className = 'rocket-builder-row';
             const labelEl = document.createElement('label');
@@ -822,12 +1079,18 @@ function populateRocketBuilderContent(tab) {
             input.min = min;
             input.max = max;
             input.step = step;
-            input.value = typeof val === 'number' ? val : 0;
-            input.addEventListener('input', applyRocketBuilderForm);
+            if (entry.locked) {
+                input.disabled = true;
+                input.readOnly = true;
+                input.title = 'Calculated from tank volume (length × diameter)';
+            }
+            const disp = formatOneDecimal(typeof val === 'number' ? val : 0);
+            input.value = disp;
+            input.addEventListener('input', updateConfigAndDiagramFromForm);
             input.addEventListener('change', applyRocketBuilderForm);
             const valSpan = document.createElement('span');
             valSpan.className = 'rocket-builder-value';
-            valSpan.textContent = input.value;
+            valSpan.textContent = disp;
             row.appendChild(labelEl);
             row.appendChild(input);
             row.appendChild(valSpan);
@@ -835,7 +1098,8 @@ function populateRocketBuilderContent(tab) {
         });
     } else {
         // Advanced: double column grid as before
-        schemaForTab.forEach(({ path, label, min, max, step }) => {
+        schemaForTab.forEach((entry) => {
+            const { path, label, min, max, step } = entry;
             const isNewSection = path === 'stages.0.dryMass' || path === 'stages.1.dryMass' || path === 'payload.mass' || path === 'fairing.mass' || path === 'fairingJettisonAlt';
             if (isNewSection) {
                 const name = path === 'stages.0.dryMass' ? 'Stage 1' : path === 'stages.1.dryMass' ? 'Stage 2' : path === 'payload.mass' ? 'Payload' : path === 'fairing.mass' ? 'Fairing' : 'Global';
@@ -844,7 +1108,9 @@ function populateRocketBuilderContent(tab) {
                 h.textContent = name;
                 content.appendChild(h);
             }
-            const val = getByPath(config, path);
+            const val = entry.locked && path.startsWith('stages.') && path.endsWith('.propellantMass')
+                ? getMaxPropellantForStage(config.stages[path === 'stages.0.propellantMass' ? 0 : 1], config.propellantDensity ?? 923)
+                : getByPath(config, path);
             const row = document.createElement('div');
             row.className = 'rocket-builder-row';
             const labelEl = document.createElement('label');
@@ -857,12 +1123,18 @@ function populateRocketBuilderContent(tab) {
             input.min = min;
             input.max = max;
             input.step = step;
-            input.value = typeof val === 'number' ? val : 0;
-            input.addEventListener('input', applyRocketBuilderForm);
+            if (entry.locked) {
+                input.disabled = true;
+                input.readOnly = true;
+                input.title = 'Calculated from tank volume (length × diameter)';
+            }
+            const disp = formatOneDecimal(typeof val === 'number' ? val : 0);
+            input.value = disp;
+            input.addEventListener('input', updateConfigAndDiagramFromForm);
             input.addEventListener('change', applyRocketBuilderForm);
             const valSpan = document.createElement('span');
             valSpan.className = 'rocket-builder-value';
-            valSpan.textContent = input.value;
+            valSpan.textContent = disp;
             row.appendChild(labelEl);
             row.appendChild(input);
             row.appendChild(valSpan);
@@ -876,7 +1148,8 @@ function populateRocketBuilderContent(tab) {
     if (activeBtn) activeBtn.classList.add('active');
 }
 
-function applyRocketBuilderForm() {
+/** Read form inputs into config and apply (propellant to max). Does not overwrite input values. */
+function updateConfigAndDiagramFromForm() {
     const config = JSON.parse(JSON.stringify(getRocketConfig()));
     ROCKET_BUILDER_SCHEMA.forEach(({ path }) => {
         const input = document.querySelector(`[data-path="${path}"]`);
@@ -885,12 +1158,29 @@ function applyRocketBuilderForm() {
             if (!isNaN(num)) setByPath(config, path, num);
         }
     });
+    const density = config.propellantDensity ?? 923;
+    for (let i = 0; i < config.stages.length; i++) {
+        config.stages[i].propellantMass = getMaxPropellantForStage(config.stages[i], density);
+    }
     setRocketConfig(config);
-    // Update value displays
+    for (let i = 0; i < config.stages.length; i++) {
+        syncBuilderInput(`stages.${i}.propellantMass`, config.stages[i].propellantMass);
+    }
+    requestAnimationFrame(() => drawRocketBuilderDiagram());
+}
+
+/** Full apply: update config from form, then format and overwrite value displays to one decimal. */
+function applyRocketBuilderForm() {
+    updateConfigAndDiagramFromForm();
+    // Update value displays (one decimal) – overwrites inputs so only run on change/blur
     ROCKET_BUILDER_SCHEMA.forEach(({ path }) => {
         const input = document.querySelector(`[data-path="${path}"]`);
         const valSpan = input?.parentElement?.querySelector('.rocket-builder-value');
-        if (input && valSpan) valSpan.textContent = input.value;
+        if (input && valSpan) {
+            const str = formatOneDecimal(input.value);
+            input.value = str;
+            valSpan.textContent = str;
+        }
     });
 }
 

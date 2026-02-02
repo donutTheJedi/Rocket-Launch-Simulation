@@ -21,11 +21,32 @@ function computeTotalLength(config) {
 }
 
 /**
- * Ensure config has valid structure and recompute totalLength.
+ * Max propellant mass that fits in a stage's tank (cylinder: pi * r² * height).
+ * @param {Object} stage - Stage config with diameter, length, tankLengthRatio
+ * @param {number} propellantDensity - kg/m³
+ * @returns {number} Max propellant mass (kg)
+ */
+export function getMaxPropellantForStage(stage, propellantDensity) {
+    const r = (stage.diameter || 0) / 2;
+    const tankHeight = (stage.length || 0) * (stage.tankLengthRatio ?? 0.85);
+    const volume = Math.PI * r * r * tankHeight;
+    return volume * (propellantDensity || 923);
+}
+
+/**
+ * Ensure config has valid structure, recompute totalLength, and clamp propellant to tank capacity.
  */
 function normalizeConfig(config) {
     const out = deepClone(config);
     out.totalLength = computeTotalLength(out);
+    const density = out.propellantDensity ?? 923;
+    for (let i = 0; i < out.stages.length; i++) {
+        const stage = out.stages[i];
+        const maxProp = getMaxPropellantForStage(stage, density);
+        if (stage.propellantMass > maxProp) {
+            stage.propellantMass = maxProp;
+        }
+    }
     return out;
 }
 
