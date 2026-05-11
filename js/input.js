@@ -2,6 +2,7 @@ import { GUIDANCE_CONFIG } from './constants.js';
 import { getRocketConfig } from './rocketConfig.js';
 import { state, initState, getAltitude, resetCurrentMission } from './state.js';
 import { resetGuidance } from './guidance.js';
+import { resetCubicGuidance } from './cubicGuidance.js';
 import { addEvent } from './events.js';
 import { updateTelemetry } from './telemetry.js';
 import { getCanvas, resize } from './renderer.js';
@@ -103,6 +104,7 @@ export function initInput() {
     document.getElementById('reset-btn').addEventListener('click', () => {
         resetCurrentMission();
         resetGuidance();
+        if (state.gameMode === 'cubic') resetCubicGuidance();
         document.getElementById('launch-btn').disabled = false;
         if (state.gameMode !== 'orbital') {
             document.getElementById('launch-btn').style.display = 'inline-block';
