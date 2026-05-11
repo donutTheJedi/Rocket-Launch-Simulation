@@ -158,6 +158,16 @@
         </div>
         
         <div class="menu-section">
+            <h3>Flight Options — Cubic Guidance</h3>
+            <p class="menu-description">Precision orbit insertion using a cubic thrust-angle profile. A Gauss-Newton solver finds the optimal angle trajectory that steers to target orbit velocity. Solver output is printed to the browser console.</p>
+            <div class="menu-input-group">
+                <label for="cubic-altitude-input">Target Altitude (km):</label>
+                <input type="number" id="cubic-altitude-input" value="500" min="150" max="2000" step="50">
+            </div>
+            <button id="start-cubic-btn" class="menu-start-btn">START CUBIC GUIDANCE</button>
+        </div>
+
+        <div class="menu-section">
             <h3>Orbital Mode</h3>
             <p class="menu-description">Spawn in orbit and practice orbital mechanics.</p>
             <div class="menu-preset-buttons">

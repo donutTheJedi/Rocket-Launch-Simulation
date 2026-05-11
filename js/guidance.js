@@ -1,9 +1,10 @@
 import { G, EARTH_MASS, EARTH_RADIUS, GUIDANCE_CONFIG } from './constants.js';
 import { getRocketConfig } from './rocketConfig.js';
-import { getTotalMass } from './state.js';
+import { getTotalMass, state } from './state.js';
 import { getAtmosphericDensity, getAirspeed, getGravity } from './physics.js';
 import { predictOrbit, computeRemainingDeltaV } from './orbital.js';
 import { calculateTimeToApoapsis, calculateTimeToPeriapsis } from './events.js';
+import { computeCubicVacuumGuidance } from './cubicGuidance.js';
 
 // Guidance state
 export let guidanceState = {
@@ -17,6 +18,7 @@ export let guidanceState = {
     isRetrograde: false,
     circularizationBurnStarted: false,
     retrogradeBurnStarted: false,
+    lastFpaLogTime: -Infinity,
 };
 
 // Reset guidance state
@@ -32,7 +34,19 @@ export function resetGuidance() {
         isRetrograde: false,
         circularizationBurnStarted: false,
         retrogradeBurnStarted: false,
+        lastFpaLogTime: -Infinity,
     };
+}
+
+const FPA_LOG_INTERVAL_SECONDS = 5;
+
+function fpaLog(simState, message) {
+    if (simState.time - guidanceState.lastFpaLogTime < FPA_LOG_INTERVAL_SECONDS) {
+        return;
+    }
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] [FPA t+${simState.time.toFixed(1)}s] ${message}`);
+    guidanceState.lastFpaLogTime = simState.time;
 }
 
 // ============================================================================
@@ -150,103 +164,46 @@ export function computeGuidance(state, dt) {
                 const minPitchForAltitude = 90 - altitudeFraction * altitudeFraction * 80; // Smooth quadratic curve
                 
                 // ============================================================
-                // PROGRADE FOLLOWING WITH CONSTRAINTS
+                // ACTIVE ATMOSPHERIC EXIT FPA TARGETING
                 // ============================================================
-                
-                // Start with prograde (minimizes angle of attack)
-                let basePitch = flightPathAngle;
-                
-                // Calculate natural gravity turn rate
-                const g = getGravity(r);
-                const gamma = flightPathAngle * Math.PI / 180;
-                const naturalTurnRate = (g * Math.cos(gamma) / velocity) * 180 / Math.PI;  // deg/sec
-                
-                // Measure actual turn rate using rocket pitch (where rocket is actually pointing)
-                // This is more accurate than flight path angle since it accounts for actual rocket orientation
-                const actualTurnRate = dt > 0 ? (guidanceState.lastRocketPitch - currentRocketPitch) / dt : 0;
-                
-                // Store for next frame
+                // Drive toward a mission-dependent exit FPA above ~40km so we
+                // don't arrive at atmosphere exit too steep for vacuum/cubic guidance.
+                const targetAlt = GUIDANCE_CONFIG.targetAltitude;
+                const targetAboveAtmo = targetAlt - GUIDANCE_CONFIG.atmosphereLimit;
+                const exitFpaTarget = Math.max(5, Math.min(20, 5 + targetAboveAtmo / 60000));
+
+                const atmosphereProgress = altitude / GUIDANCE_CONFIG.atmosphereLimit; // 0..1
+                const exitFpaWeight = Math.max(0, Math.min(1, (atmosphereProgress - 0.57) / 0.43)); // 0 at 40km, 1 at 70km
+                const desiredFPA = 90 - exitFpaWeight * (90 - exitFpaTarget);
+
+                const fpaErrorAtmo = flightPathAngle - desiredFPA;
+                let correction = 0;
+                if (fpaErrorAtmo > 2) {
+                    // Too steep — pitch down.
+                    correction = -Math.min(15, fpaErrorAtmo * 0.8);
+                    debugInfo.reason = 'Atmo FPA high — pitching down';
+                } else if (fpaErrorAtmo < -2) {
+                    // Too shallow — pitch up modestly.
+                    correction = Math.min(5, -fpaErrorAtmo * 0.3);
+                    debugInfo.reason = 'Atmo FPA low — pitching up';
+                } else {
+                    debugInfo.reason = 'Atmo FPA on target';
+                }
+
+                commandedPitch = Math.max(minPitchForAltitude, flightPathAngle + correction);
+
+                // Keep turn-rate trace fields up to date for debug continuity.
                 guidanceState.lastFlightPathAngle = flightPathAngle;
                 guidanceState.lastRocketPitch = currentRocketPitch;
-                
-                // CONSTRAINT 1: Turn rate limiting
-                let correction = 0;
-                const turnRateExcess = actualTurnRate - naturalTurnRate;
-                
-                if (turnRateExcess > 0.5) {
-                    correction = Math.min(5, turnRateExcess * 2);
-                    debugInfo.reason = 'Turn rate excess — resisting';
-                    debugInfo.turnRateExcess = turnRateExcess;
-                }
-                
-                // CONSTRAINT 2: Minimum pitch for altitude (soft constraint)
-                if (basePitch + correction < minPitchForAltitude) {
-                    const deficit = minPitchForAltitude - (basePitch + correction);
-                    correction += deficit * 0.3;
-                    debugInfo.reason = 'Altitude minimum pitch — gentle correction';
-                }
-                
-                // ============================================================
-                // CONSTRAINT 3: MINIMUM VERTICAL VELOCITY AT ATMOSPHERE EXIT
-                // ============================================================
-                // 
-                // Problem: For low orbits, we go very horizontal. But if we
-                // exit the atmosphere with too little vertical velocity, we'll
-                // fall back in before we can raise periapsis.
-                //
-                // Solution: Ensure minimum vVertical that scales with:
-                // - Distance to atmosphere exit (more important as we get close)
-                // - Target altitude (higher targets need more vVertical)
-                //
-                // Simple model: Need enough vVertical to coast to ~100km above 
-                // atmosphere before gravity pulls us back down.
-                // Time to coast: t ≈ 2 * vVertical / g (up and down)
-                // So need vVertical that gives us margin above atmosphere
-                // ============================================================
-                
-                const distanceToAtmoExit = GUIDANCE_CONFIG.atmosphereLimit - altitude;
-                const targetAlt = GUIDANCE_CONFIG.targetAltitude;
-                
-                // Minimum vVertical needed at atmosphere exit
-                // For 200km target: need ~300 m/s to have time to circularize
-                // For 400km target: need ~500 m/s
-                // Scale linearly with target altitude above atmosphere
-                const targetAboveAtmo = targetAlt - GUIDANCE_CONFIG.atmosphereLimit;
-                const minVVerticalAtExit = 200 + (targetAboveAtmo / 1000) * 0.5; // m/s
-                
-                // Scale requirement based on how close we are to exit
-                // At 50km altitude: start caring about vVertical
-                // At 70km: full requirement
-                const proximityToExit = Math.max(0, (altitude - 50000) / 20000); // 0 at 50km, 1 at 70km
-                const currentMinVVertical = minVVerticalAtExit * proximityToExit;
-                
-                debugInfo.minVVertical = currentMinVVertical;
-                debugInfo.actualVVertical = vVertical;
-                
-                // If vVertical is below minimum, pitch up
-                if (proximityToExit > 0.3 && vVertical < currentMinVVertical) {
-                    const vVerticalDeficit = currentMinVVertical - vVertical;
-                    
-                    // Scale correction: bigger deficit = bigger pitch up
-                    // Every 100 m/s deficit = 5° pitch up
-                    const vVerticalCorrection = Math.min(15, vVerticalDeficit / 20);
-                    
-                    // Only apply if it's a significant correction
-                    if (vVerticalCorrection > 2) {
-                        correction += vVerticalCorrection;
-                        debugInfo.reason = `Low vVertical (${vVertical.toFixed(0)} m/s < ${currentMinVVertical.toFixed(0)} m/s) — pitching up`;
-                    }
-                }
-                
-                // Final hard constraint
-                commandedPitch = Math.max(minPitchForAltitude, basePitch + correction);
-                
-                debugInfo.basePitch = basePitch;
+
+                debugInfo.exitFpaTarget = exitFpaTarget;
+                debugInfo.atmosphereProgress = atmosphereProgress;
+                debugInfo.exitFpaWeight = exitFpaWeight;
+                debugInfo.desiredFPA = desiredFPA;
+                debugInfo.fpaErrorAtmo = fpaErrorAtmo;
                 debugInfo.correction = correction;
                 debugInfo.minPitchForAltitude = minPitchForAltitude;
-                debugInfo.naturalTurnRate = naturalTurnRate;
-                debugInfo.actualTurnRate = actualTurnRate;
-                debugInfo.currentRocketPitch = currentRocketPitch;
+                debugInfo.commandedPitch = commandedPitch;
                 debugInfo.flightPathAngle = flightPathAngle;
             }
         }
@@ -255,12 +212,49 @@ export function computeGuidance(state, dt) {
     // ------------------------------------------------------------------------
     // ABOVE ATMOSPHERE: Active guidance
     // ------------------------------------------------------------------------
-    
+
     else {
+
+        // ================================================================
+        // CUBIC GUIDANCE MODE — overrides normal vacuum guidance
+        // ================================================================
+        if (state.gameMode === 'cubic' && state.currentStage >= 1) {
+            const cubicResult = computeCubicVacuumGuidance(state, altitude, flightPathAngle);
+            commandedPitch    = cubicResult.pitch;
+            commandedThrottle = cubicResult.throttle;
+            phase             = cubicResult.phase;
+            debugInfo         = cubicResult.debug;
+
+            // Clamp pitch to physical range (bypass rate limiter for cubic — profile handles smoothness)
+            commandedPitch = Math.max(-30, Math.min(90, commandedPitch));
+            guidanceState.lastCommandedPitch = commandedPitch;
+            guidanceState.phase    = phase;
+            guidanceState.throttle = commandedThrottle;
+
+            const pitchRad = commandedPitch * Math.PI / 180;
+            const thrustDirCubic = {
+                x: Math.cos(pitchRad) * localEast.x + Math.sin(pitchRad) * localUp.x,
+                y: Math.cos(pitchRad) * localEast.y + Math.sin(pitchRad) * localUp.y,
+            };
+            const magC = Math.sqrt(thrustDirCubic.x**2 + thrustDirCubic.y**2);
+            if (magC > 0) { thrustDirCubic.x /= magC; thrustDirCubic.y /= magC; }
+
+            return {
+                pitch: commandedPitch,
+                thrustDir: thrustDirCubic,
+                throttle: commandedThrottle,
+                phase,
+                debug: debugInfo,
+                orbit: predictOrbit(state),
+                velocityDeficit: vCircular - vHorizontal,
+                remainingDeltaV: computeRemainingDeltaV(state),
+            };
+        }
+
         // ================================================================
         // VACUUM GUIDANCE: Manage flight path angle during ascent
         // ================================================================
-        
+
         phase = 'vacuum-guidance';
         
         const orbit = predictOrbit(state);
@@ -505,10 +499,10 @@ export function computeGuidance(state, dt) {
         // How far off are we from the ideal flight path angle?
         const fpaError = flightPathAngle - targetFlightPathAngle;
         
-        console.log('Final target FPA:', targetFlightPathAngle.toFixed(1), '°');
-        console.log('Current FPA:', flightPathAngle.toFixed(1), '°');
-        console.log('FPA error:', fpaError.toFixed(1), '°');
-        console.log('==========================');
+        fpaLog(
+            state,
+            `target=${targetFlightPathAngle.toFixed(1)}deg current=${flightPathAngle.toFixed(1)}deg error=${fpaError.toFixed(1)}deg`
+        );
         
         debugInfo.baseFPA = baseFPA;
         debugInfo.periapsisSafetyBias = periapsisSafetyBias;
@@ -580,7 +574,10 @@ export function computeGuidance(state, dt) {
             
             commandedPitch = flightPathAngle + correction;
             
-            console.log('CASE 1 - Raising Apo: correction =', correction.toFixed(1), '°, commandedPitch =', commandedPitch.toFixed(1), '°');
+            fpaLog(
+                state,
+                `CASE1 raise-apo correction=${correction.toFixed(1)}deg commandedPitch=${commandedPitch.toFixed(1)}deg`
+            );
         }
         
         // CASE 2: Apoapsis on target (or above), periapsis low (<100km) — need to raise periapsis
@@ -598,7 +595,7 @@ export function computeGuidance(state, dt) {
                 commandedPitch = flightPathAngle; // Prograde
                 commandedThrottle = 1.0;
                 
-                console.log('CASE 2a - Emergency Pe raise (descending): Pe =', (orbit.periapsis/1000).toFixed(1), 'km');
+                fpaLog(state, `CASE2a emergency-periapsis-raise descending pe=${(orbit.periapsis / 1000).toFixed(1)}km`);
                 debugInfo.reason = `EMERGENCY: Descending with Pe=${(orbit.periapsis/1000).toFixed(0)}km — burning prograde`;
                 } else {
                 // We're ascending — coast to apoapsis, then burn prograde there
@@ -645,13 +642,16 @@ export function computeGuidance(state, dt) {
                     commandedPitch = flightPathAngle; // Prograde
                     commandedThrottle = 1.0;
                     
-                    console.log('CASE 2b - Burning at Apo to raise Pe: deltaV =', deltaV_needed.toFixed(1), 'm/s');
+                    fpaLog(state, `CASE2b raise-periapsis-at-apo deltaV=${deltaV_needed.toFixed(1)}m/s`);
                     debugInfo.reason = `Burning at Apo to raise Pe (${(orbit.periapsis/1000).toFixed(0)}km → ${(SAFE_PERIAPSIS/1000).toFixed(0)}km)`;
                 } else {
                     commandedThrottle = 0;
                     commandedPitch = flightPathAngle;
                     
-                    console.log('CASE 2c - Coasting to Apo: timeToApo =', timeToApoapsis.toFixed(0), 's, burn in', (timeToApoapsis - burnStartOffset).toFixed(0), 's');
+                    fpaLog(
+                        state,
+                        `CASE2c coast-to-apo tApo=${timeToApoapsis.toFixed(0)}s burnIn=${(timeToApoapsis - burnStartOffset).toFixed(0)}s`
+                    );
                     debugInfo.reason = `Coasting to Apo (${timeToApoapsis.toFixed(0)}s) to raise Pe`;
                 }
                 
@@ -715,7 +715,10 @@ export function computeGuidance(state, dt) {
                 if (commandedPitch > 180) commandedPitch -= 360;
                 commandedThrottle = 1.0;
                 
-                console.log('CASE 3a - Retrograde at Pe: deltaV =', deltaV_needed.toFixed(1), 'm/s, lowering Apo by', (apoapsisError/1000).toFixed(0), 'km');
+                fpaLog(
+                    state,
+                    `CASE3a retrograde-at-periapsis deltaV=${deltaV_needed.toFixed(1)}m/s lowerApoBy=${(apoapsisError / 1000).toFixed(0)}km`
+                );
                 debugInfo.reason = `Retrograde at Pe — lowering Apo (${(orbit.apoapsis/1000).toFixed(0)}km → ${(TARGET/1000).toFixed(0)}km)`;
                 debugInfo.isRetrograde = true;
             } else {
@@ -723,7 +726,10 @@ export function computeGuidance(state, dt) {
                 commandedThrottle = 0;
                 commandedPitch = flightPathAngle;
                 
-                console.log('CASE 3b - Coasting to Pe: timeToPeri =', timeToPeriapsis.toFixed(0), 's, burn in', (timeToPeriapsis - burnStartOffset).toFixed(0), 's');
+                fpaLog(
+                    state,
+                    `CASE3b coast-to-periapsis tPeri=${timeToPeriapsis.toFixed(0)}s burnIn=${(timeToPeriapsis - burnStartOffset).toFixed(0)}s`
+                );
                 debugInfo.reason = `Coasting to Pe (${timeToPeriapsis.toFixed(0)}s) for retrograde burn`;
             }
             

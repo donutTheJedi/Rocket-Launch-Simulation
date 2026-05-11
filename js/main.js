@@ -7,6 +7,7 @@ import { getGravity, getCurrentThrust, getMassFlowRate, getAtmosphericDensity, g
          calculateRocketCOGAtPad, calculateCenterOfPressure } from './physics.js';
 import { calculateOrbitalElements } from './orbital.js';
 import { computeGuidance, guidanceState, resetGuidance } from './guidance.js';
+import { cubicGuidanceState, resetCubicGuidance, computeCubicVacuumGuidance } from './cubicGuidance.js';
 import { addEvent } from './events.js';
 import { updateTelemetry } from './telemetry.js';
 import { initRenderer, resize, render } from './renderer.js';
@@ -174,7 +175,20 @@ function update(dt) {
                 }
             } else {
                 // Guidance mode - update every sub-step for accuracy
-                const guidance = computeGuidance(state, actualStepDt);
+                // Cubic mode uses standard ascent guidance in atmosphere, then cubic solver in vacuum.
+                let guidance;
+                if (state.gameMode === 'cubic' && altitudeStep >= GUIDANCE_CONFIG.atmosphereLimit && state.currentStage >= 1) {
+                    const speed = Math.sqrt(state.vx * state.vx + state.vy * state.vy);
+                    const flightPathAngleDeg = speed > 1e-6
+                        ? Math.atan2(
+                            state.vx * localUpStep.x + state.vy * localUpStep.y,
+                            state.vx * localEastStep.x + state.vy * localEastStep.y
+                        ) * 180 / Math.PI
+                        : 0;
+                    guidance = computeCubicVacuumGuidance(state, altitudeStep, flightPathAngleDeg);
+                } else {
+                    guidance = computeGuidance(state, actualStepDt);
+                }
                 
                 // In manual mode, use manual pitch but store guidance recommendation
                 if (state.gameMode === 'manual' && state.manualPitch !== null) {
@@ -388,6 +402,11 @@ function update(dt) {
             state.currentStage = 1;
             addEvent("Stage separation");
             addEvent("SES-1");
+            // Reset cubic guidance so it re-solves fresh for the new stage.
+            // Must be called on every stage separation; omitting it leaves
+            // burnStartTime / T from stage 1, which causes an immediate
+            // profile-horizon re-solve before stage 2 params are valid.
+            resetCubicGuidance();
         } else {
             addEvent("SECO");
             state.engineOn = false;
@@ -524,6 +543,8 @@ function updateCurrentModeDisplay() {
             modeDisplay.textContent = `Current Mode: Guided Launch (${(state.targetAltitude / 1000).toFixed(0)}km target)`;
         } else if (state.gameMode === 'orbital') {
             modeDisplay.textContent = `Current Mode: Orbital (${(state.orbitalSpawnAltitude / 1000).toFixed(0)}km)`;
+        } else if (state.gameMode === 'cubic') {
+            modeDisplay.textContent = `Current Mode: Cubic Guidance (${(state.targetAltitude / 1000).toFixed(0)}km target)`;
         } else {
             modeDisplay.textContent = 'No mission selected';
         }
@@ -531,6 +552,21 @@ function updateCurrentModeDisplay() {
 }
 
 function startMission(mode, options = {}) {
+    const launchBtn = document.getElementById('launch-btn');
+    const pauseBtn = document.getElementById('pause-btn');
+
+    // Always reset launch/pause controls when selecting a mission from the menu.
+    // Without this, switching modes after a prior launch can leave LAUNCH disabled,
+    // which makes the new mode appear to not start.
+    if (launchBtn) {
+        launchBtn.disabled = false;
+        launchBtn.style.display = (mode === 'orbital') ? 'none' : 'inline-block';
+    }
+    if (pauseBtn) {
+        pauseBtn.style.display = 'none';
+        pauseBtn.textContent = 'PAUSE';
+    }
+
     if (mode === 'manual') {
         state.gameMode = 'manual';
         state.manualPitch = 90;
@@ -552,7 +588,19 @@ function startMission(mode, options = {}) {
         spawnInOrbit(altitude);
         resetGuidance();
         hideMenu();
+    } else if (mode === 'cubic') {
+        const targetAlt = options.targetAltitude || 500000;
+        state.gameMode = 'cubic';
+        state.targetAltitude = targetAlt;
+        GUIDANCE_CONFIG.targetAltitude = targetAlt;
+        initState();
+        resetGuidance();
+        resetCubicGuidance();
+        console.log(`[Mode] Cubic guidance selected (target ${(targetAlt / 1000).toFixed(0)} km)`);
+        hideMenu();
     }
+    state.running = false;
+    state.engineOn = false;
     updateUIForMode();
 }
 
@@ -561,8 +609,14 @@ function updateUIForMode() {
     const manualControls = document.getElementById('manual-pitch-controls');
     const pitchProgram = document.getElementById('pitch-program');
     const isMobile = window.innerWidth <= 768;
-    
-    if (state.gameMode === 'manual') {
+
+    if (state.gameMode === 'cubic') {
+        if (manualControls) {
+            manualControls.style.display = 'none';
+            manualControls.classList.remove('mobile-bottom-right');
+        }
+        if (pitchProgram) pitchProgram.style.display = 'block';
+    } else if (state.gameMode === 'manual') {
         if (manualControls) {
             manualControls.style.display = 'block';
             // On mobile, position in bottom right (outside hamburger menu)
@@ -590,7 +644,7 @@ function updateUIForMode() {
         }
     }
     
-    // Show launch button only for manual and guided modes
+    // Show launch button only for manual, guided, and cubic modes
     if (launchBtn) {
         if (state.gameMode === 'orbital') {
             launchBtn.style.display = 'none';
@@ -1220,6 +1274,7 @@ function initMenu() {
     const startManualBtn = document.getElementById('start-manual-btn');
     const startGuidedBtn = document.getElementById('start-guided-btn');
     const startOrbitalBtn = document.getElementById('start-orbital-btn');
+    const startCubicBtn = document.getElementById('start-cubic-btn');
     const presetBtns = document.querySelectorAll('.preset-btn');
     const buildRocketBtn = document.getElementById('build-rocket-btn');
     const rocketBuilderCloseBtn = document.getElementById('rocket-builder-close-btn');
@@ -1285,6 +1340,14 @@ function initMenu() {
             const activePreset = document.querySelector('.preset-btn.active');
             const altitude = activePreset ? parseFloat(activePreset.dataset.altitude) * 1000 : 500000;
             startMission('orbital', { altitude: altitude });
+        });
+    }
+
+    if (startCubicBtn) {
+        startCubicBtn.addEventListener('click', () => {
+            const altInput  = document.getElementById('cubic-altitude-input');
+            const targetAlt = altInput ? parseFloat(altInput.value) * 1000 : 500000;
+            startMission('cubic', { targetAltitude: targetAlt });
         });
     }
     
