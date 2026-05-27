@@ -40,6 +40,27 @@ function normalizeConfig(config) {
     const out = deepClone(config);
     out.totalLength = computeTotalLength(out);
     const density = out.propellantDensity ?? 923;
+
+    // Structural defaults for backward compatibility with older configs.
+    const DEFAULT_WALL_THICKNESS = 0.004;
+    const DEFAULT_YIELD_STRESS = 276e6;
+    const INTERSTAGE_DEFAULT_WALL_THICKNESS = 0.003;
+    const INTERSTAGE_DEFAULT_YIELD_STRESS = 200e6;
+
+    for (let i = 0; i < out.stages.length; i++) {
+        const stage = out.stages[i];
+        stage.wallThickness = stage.wallThickness ?? DEFAULT_WALL_THICKNESS;
+        stage.yieldStress = stage.yieldStress ?? DEFAULT_YIELD_STRESS;
+    }
+
+    out.fairing = out.fairing || {};
+    out.fairing.wallThickness = out.fairing.wallThickness ?? DEFAULT_WALL_THICKNESS;
+    out.fairing.yieldStress = out.fairing.yieldStress ?? DEFAULT_YIELD_STRESS;
+
+    out.interstage = out.interstage || {};
+    out.interstage.wallThickness = out.interstage.wallThickness ?? INTERSTAGE_DEFAULT_WALL_THICKNESS;
+    out.interstage.yieldStress = out.interstage.yieldStress ?? INTERSTAGE_DEFAULT_YIELD_STRESS;
+
     for (let i = 0; i < out.stages.length; i++) {
         const stage = out.stages[i];
         const maxProp = getMaxPropellantForStage(stage, density);
@@ -52,6 +73,7 @@ function normalizeConfig(config) {
 
 // Mutable current config (deep clone of default on init)
 let currentConfig = normalizeConfig(DEFAULT_ROCKET_CONFIG);
+let customRocketActive = false;
 
 /**
  * Get the current rocket config (used by simulation).
@@ -71,6 +93,7 @@ export function setRocketConfig(config) {
     }
     if (!config.payload || !config.fairing) return;
     currentConfig = normalizeConfig(config);
+    customRocketActive = true;
 }
 
 /**
@@ -86,4 +109,9 @@ export function getDefaultRocketConfig() {
  */
 export function resetToDefault() {
     currentConfig = normalizeConfig(getDefaultRocketConfig());
+    customRocketActive = false;
+}
+
+export function isCustomRocket() {
+    return customRocketActive;
 }

@@ -34,6 +34,11 @@
     
     <div id="telemetry">
         <h3>TELEMETRY</h3>
+        <div class="telemetry-tabs">
+            <button id="telemetry-tab-flight" class="telemetry-tab active">FLIGHT</button>
+            <button id="telemetry-tab-structural" class="telemetry-tab">STRUCTURE</button>
+        </div>
+        <div id="telemetry-flight-content">
         <div class="section">
             <div><span class="label">T+</span><span class="value" id="time">00:00:00</span></div>
             <div><span class="label">Stage</span><span class="value" id="stage">1</span></div>
@@ -67,10 +72,32 @@
             <div><span class="label">Apoapsis</span><span class="value" id="apoapsis">0 km</span></div>
             <div><span class="label">Periapsis</span><span class="value" id="periapsis">0 km</span></div>
         </div>
+        </div>
+        <div id="telemetry-structural-dock" class="telemetry-structural-dock" hidden>
+            <div id="structural-panel" class="structural-panel structural-panel--docked">
+                <div class="structural-panel-header" id="structural-panel-header" title="Drag to move">
+                    <span class="structural-panel-grip" aria-hidden="true">⋮⋮</span>
+                    <span class="structural-panel-title">STRUCTURE</span>
+                    <button type="button" id="structural-panel-dock-btn" class="structural-panel-dock-btn" title="Pop out panel">⧉</button>
+                </div>
+                <div id="telemetry-structural-content">
+                    <div class="section telemetry-structural-diagram-section">
+                        <div class="telemetry-structural-diagram-title">STRESS MAP</div>
+                        <canvas id="telemetry-rocket-canvas" width="160" height="300"></canvas>
+                    </div>
+                    <div id="structural-sections-panel">
+                        <!-- Populated dynamically by telemetry.js -->
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-    
+
     <div id="events">
-        <h3>MISSION EVENTS</h3>
+        <h3>
+            <span>MISSION EVENTS</span>
+            <button type="button" id="events-collapse-btn" class="events-collapse-btn" title="Minimize mission events">_</button>
+        </h3>
         <div id="event-list"></div>
     </div>
     
@@ -104,81 +131,170 @@
     
     <div id="menu-panel" style="display: none;">
         <div class="menu-header">
-            <h2>Mission Selector</h2>
+            <h2>MISSION CONTROL</h2>
             <button id="menu-close-btn" class="menu-close">×</button>
         </div>
-        <div id="current-mode-display" class="current-mode">No mission selected</div>
-        
-        <div class="menu-section">
-            <h3>Manual Control</h3>
-            <p class="menu-description">Control pitch manually (W/S keys). Guidance provides recommendations.</p>
-            <button id="start-manual-btn" class="menu-start-btn">START MANUAL CONTROL</button>
-            
-            <button id="build-rocket-btn" class="build-rocket-btn">Build your own rocket</button>
-            
-            <!-- Settings hamburger menu -->
-            <div class="settings-hamburger-container">
-                <button id="settings-toggle-btn" class="settings-hamburger-btn">
-                    <span class="hamburger-icon">☰</span>
-                    <span>Settings</span>
+
+        <!-- ► FLIGHT MODE -->
+        <div class="menu-sg">
+            <div class="menu-sg-label">► FLIGHT MODE</div>
+            <div class="menu-mode-grid">
+                <button class="menu-mode-card" data-mode="manual">
+                    <div class="menu-mode-card-label">MANUAL</div>
+                    <div class="menu-mode-card-sub">Fly by hand</div>
+                    <div class="menu-mode-badges">
+                        <span class="mode-badge mode-badge--hard">HARD</span>
+                        <span class="mode-badge mode-badge--tag">W/S keys</span>
+                    </div>
                 </button>
-                <div id="settings-content" class="settings-content" style="display: none;">
-                    <div class="setting-row">
-                        <span class="setting-label">Control Mode:</span>
-                        <div class="toggle-buttons">
-                            <button id="control-turnrate-btn" class="toggle-btn active">Turn Rate</button>
-                            <button id="control-gimbal-btn" class="toggle-btn">Gimbal</button>
-                        </div>
+                <button class="menu-mode-card" data-mode="guided">
+                    <div class="menu-mode-card-label">GUIDED</div>
+                    <div class="menu-mode-card-sub">Auto guidance</div>
+                    <div class="menu-mode-badges">
+                        <span class="mode-badge mode-badge--easy">EASY</span>
+                        <span class="mode-badge mode-badge--tag">Recommended</span>
                     </div>
-                    <p class="setting-description" id="control-mode-description">
-                        Control target pitch angle. Gimbal adjusts automatically.
-                    </p>
-                    <div class="setting-row" id="aero-forces-setting" style="display: none;">
-                        <span class="setting-label">Aerodynamic Forces:</span>
-                        <div class="toggle-buttons">
-                            <button id="aero-forces-off-btn" class="toggle-btn active">Off</button>
-                            <button id="aero-forces-on-btn" class="toggle-btn">On</button>
-                        </div>
+                </button>
+                <button class="menu-mode-card" data-mode="cubic">
+                    <div class="menu-mode-card-label">CUBIC</div>
+                    <div class="menu-mode-card-sub">Precision orbit</div>
+                    <div class="menu-mode-badges">
+                        <span class="mode-badge mode-badge--medium">MEDIUM</span>
+                        <span class="mode-badge mode-badge--tag">Spline path</span>
                     </div>
-                    <p class="setting-description" id="aero-forces-description" style="display: none;">
-                        Enable aerodynamic forces (normal force and torque) when rocket has angle of attack. Only available in gimbal control mode.
-                    </p>
+                </button>
+                <button class="menu-mode-card" data-mode="orbital">
+                    <div class="menu-mode-card-label">ORBITAL</div>
+                    <div class="menu-mode-card-sub">Spawn in orbit</div>
+                    <div class="menu-mode-badges">
+                        <span class="mode-badge mode-badge--easy">EASY</span>
+                        <span class="mode-badge mode-badge--tag">Skip ascent</span>
+                    </div>
+                </button>
+            </div>
+            <div id="guidance-disabled-note" class="menu-guidance-note" style="display:none">
+                Guided modes unavailable for custom rockets — use Manual or Orbital
+            </div>
+            <!-- Mode info + config unified box -->
+            <div id="mode-info-box" class="menu-mode-infobox" style="display:none">
+                <div class="menu-mode-info" data-mode="manual" style="display:none">
+                    <p class="menu-mode-infotext">Use W/S keys to control pitch angle. Guidance system provides heading recommendations. High skill ceiling — full control over trajectory.</p>
+                </div>
+                <div class="menu-mode-info" data-mode="guided" style="display:none">
+                    <p class="menu-mode-infotext">Set a target altitude and let the guidance system manage the entire ascent. PID controller handles pitch program and orbit insertion.</p>
+                    <div class="menu-input-group">
+                        <label for="target-altitude-input">Target Altitude (km)</label>
+                        <input type="number" id="target-altitude-input" value="500" min="150" max="2000" step="50">
+                    </div>
+                </div>
+                <div class="menu-mode-info" data-mode="cubic" style="display:none">
+                    <p class="menu-mode-infotext">A Gauss-Newton solver computes the optimal cubic thrust-angle profile to reach the target orbit. Solver output printed to console.</p>
+                    <div class="menu-input-group">
+                        <label for="cubic-altitude-input">Target Altitude (km)</label>
+                        <input type="number" id="cubic-altitude-input" value="500" min="150" max="2000" step="50">
+                    </div>
+                </div>
+                <div class="menu-mode-info" data-mode="orbital" style="display:none">
+                    <p class="menu-mode-infotext">Skip the launch phase — spawn directly in a circular orbit with limited fuel. Ideal for burns, plane changes, and rendezvous practice.</p>
+                    <div class="menu-preset-buttons">
+                        <button class="preset-btn" data-altitude="200">200 km</button>
+                        <button class="preset-btn" data-altitude="400">400 km</button>
+                        <button class="preset-btn active" data-altitude="500">500 km</button>
+                        <button class="preset-btn" data-altitude="600">600 km</button>
+                        <button class="preset-btn" data-altitude="800">800 km</button>
+                    </div>
                 </div>
             </div>
         </div>
-        
-        <div class="menu-section">
-            <h3>Guided Launch</h3>
-            <p class="menu-description">Set target altitude and let the guidance system handle the launch.</p>
-            <div class="menu-input-group">
-                <label for="target-altitude-input">Target Altitude (km):</label>
-                <input type="number" id="target-altitude-input" value="500" min="150" max="2000" step="50">
+
+        <!-- ► ROCKET CONFIG -->
+        <div class="menu-sg">
+            <div class="menu-sg-label">► ROCKET CONFIG</div>
+            <div class="menu-rocket-card">
+                <div class="menu-rocket-top">
+                    <div>
+                        <div class="menu-rocket-name">
+                            <span class="menu-rocket-icon">▲</span>
+                            <span id="menu-rocket-title">FALCON-9 MK1</span>
+                        </div>
+                        <div class="menu-rocket-meta" id="menu-rocket-meta">2 STAGES · KEROLOX</div>
+                    </div>
+                    <button id="build-rocket-btn" class="menu-build-inline-btn">BUILD ›</button>
+                </div>
+                <div class="menu-rocket-stats">
+                    <div class="menu-rocket-stat">
+                        <div class="menu-rocket-stat-val" id="menu-stat-drymass">—</div>
+                        <div class="menu-rocket-stat-label">DRY MASS</div>
+                    </div>
+                    <div class="menu-rocket-stat">
+                        <div class="menu-rocket-stat-val" id="menu-stat-twr">—</div>
+                        <div class="menu-rocket-stat-label">TWR</div>
+                    </div>
+                    <div class="menu-rocket-stat">
+                        <div class="menu-rocket-stat-val" id="menu-stat-isp">—</div>
+                        <div class="menu-rocket-stat-label">VAC ISP</div>
+                    </div>
+                </div>
+                <div class="menu-readiness">
+                    <div class="menu-readiness-header">
+                        <span>LAUNCH READINESS</span>
+                        <span id="menu-readiness-label">—</span>
+                    </div>
+                    <div class="menu-readiness-bg">
+                        <div class="menu-readiness-fill" id="menu-readiness-fill" style="width:0%"></div>
+                    </div>
+                </div>
             </div>
-            <button id="start-guided-btn" class="menu-start-btn">START GUIDED LAUNCH</button>
-        </div>
-        
-        <div class="menu-section">
-            <h3>Flight Options — Cubic Guidance</h3>
-            <p class="menu-description">Precision orbit insertion using a cubic thrust-angle profile. A Gauss-Newton solver finds the optimal angle trajectory that steers to target orbit velocity. Solver output is printed to the browser console.</p>
-            <div class="menu-input-group">
-                <label for="cubic-altitude-input">Target Altitude (km):</label>
-                <input type="number" id="cubic-altitude-input" value="500" min="150" max="2000" step="50">
+            <div id="menu-advisory" class="menu-advisory" style="display:none">
+                <span class="menu-advisory-icon">⚠</span>
+                <span id="menu-advisory-text"></span>
             </div>
-            <button id="start-cubic-btn" class="menu-start-btn">START CUBIC GUIDANCE</button>
         </div>
 
-        <div class="menu-section">
-            <h3>Orbital Mode</h3>
-            <p class="menu-description">Spawn in orbit and practice orbital mechanics.</p>
-            <div class="menu-preset-buttons">
-                <button class="preset-btn" data-altitude="200">200 km</button>
-                <button class="preset-btn" data-altitude="400">400 km</button>
-                <button class="preset-btn active" data-altitude="500">500 km</button>
-                <button class="preset-btn" data-altitude="600">600 km</button>
-                <button class="preset-btn" data-altitude="800">800 km</button>
+        <!-- ► SETTINGS -->
+        <div class="menu-sg">
+            <div class="menu-sg-label">► SETTINGS</div>
+            <div class="menu-settings-list">
+                <div class="menu-srow menu-srow--clickable" id="settings-control-mode-row">
+                    <span class="menu-srow-key">CONTROL MODE</span>
+                    <span class="menu-srow-val" id="settings-control-mode-val">TURN RATE ›</span>
+                </div>
+                <div class="menu-srow" id="aero-forces-setting" style="display:none">
+                    <span class="menu-srow-key">AERODYNAMIC FORCES</span>
+                    <label class="menu-toggle">
+                        <input type="checkbox" id="aero-forces-toggle">
+                        <span class="menu-toggle-track"></span>
+                    </label>
+                </div>
+                <div class="menu-srow">
+                    <span class="menu-srow-key">STRUCTURAL FAILURE</span>
+                    <label class="menu-toggle">
+                        <input type="checkbox" id="struct-fail-toggle">
+                        <span class="menu-toggle-track"></span>
+                    </label>
+                </div>
             </div>
-            <button id="start-orbital-btn" class="menu-start-btn">SPAWN IN ORBIT</button>
+            <!-- Hidden original buttons preserved for input.js -->
+            <div style="display:none">
+                <button id="control-turnrate-btn" class="toggle-btn active">Turn Rate</button>
+                <button id="control-gimbal-btn" class="toggle-btn">Gimbal</button>
+                <button id="aero-forces-off-btn" class="toggle-btn active">Off</button>
+                <button id="aero-forces-on-btn" class="toggle-btn">On</button>
+                <button id="struct-fail-warn-btn" class="toggle-btn active">Warn</button>
+                <button id="struct-fail-terminate-btn" class="toggle-btn">Terminate</button>
+                <p id="control-mode-description"></p>
+                <p id="aero-forces-description"></p>
+            </div>
         </div>
+
+        <!-- Launch -->
+        <button id="menu-launch-btn" class="menu-launch-btn" disabled>SELECT A MODE</button>
+
+        <!-- Hidden start buttons preserved for JS compatibility -->
+        <button id="start-manual-btn" style="display:none">START MANUAL</button>
+        <button id="start-guided-btn" style="display:none">START GUIDED</button>
+        <button id="start-cubic-btn" style="display:none">START CUBIC</button>
+        <button id="start-orbital-btn" style="display:none">SPAWN IN ORBIT</button>
     </div>
     
     <div id="menu-overlay" style="display: none;"></div>
@@ -244,8 +360,17 @@
         </div>
     </div>
 
+    <div id="structural-panel-float-root"></div>
+
     <script type="module" src="js/main.js"></script>
-    <script defer src="/_vercel/insights/script.js"></script>
+    <script>
+        if (location.hostname.endsWith('.vercel.app') || location.hostname === 'vercel.app') {
+            const s = document.createElement('script');
+            s.defer = true;
+            s.src = '/_vercel/insights/script.js';
+            document.body.appendChild(s);
+        }
+    </script>
 </body>
 </html>
 

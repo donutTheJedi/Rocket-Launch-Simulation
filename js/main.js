@@ -1,5 +1,5 @@
 import { EARTH_RADIUS, EARTH_ROTATION, KARMAN_LINE, GUIDANCE_CONFIG } from './constants.js';
-import { getRocketConfig, setRocketConfig, resetToDefault, getMaxPropellantForStage } from './rocketConfig.js';
+import { getRocketConfig, setRocketConfig, resetToDefault, getMaxPropellantForStage, isCustomRocket } from './rocketConfig.js';
 import { state, initState, getAltitude, getTotalMass, resetCurrentMission, spawnInOrbit } from './state.js';
 import { getGravity, getCurrentThrust, getMassFlowRate, getAtmosphericDensity, getAirspeed, getDrag, 
          integrateRotationalDynamics, getRocketThrustDirection, calculateCommandedGimbal,
@@ -9,6 +9,7 @@ import { calculateOrbitalElements } from './orbital.js';
 import { computeGuidance, guidanceState, resetGuidance } from './guidance.js';
 import { cubicGuidanceState, resetCubicGuidance, computeCubicVacuumGuidance } from './cubicGuidance.js';
 import { addEvent } from './events.js';
+import { calculateStructuralLoads, checkStructuralFailure } from './structural.js';
 import { updateTelemetry } from './telemetry.js';
 import { initRenderer, resize, render } from './renderer.js';
 import { initInput } from './input.js';
@@ -209,8 +210,10 @@ function update(dt) {
                 state.guidanceDebug = guidance.debug;
                 state.guidanceIsRetrograde = guidanceState.isRetrograde;
                 
-                // Detect and log burn start events (only on first sub-step to avoid spam)
-                if (step === 0 && guidance.phase === 'vacuum-guidance' && guidance.debug && guidance.debug.reason) {
+                // Detect and log guidance-specific burn events (only on first sub-step to avoid spam).
+                // Suppress these in Manual mode to keep mission events pilot-focused.
+                const shouldLogGuidanceEvents = state.gameMode === 'guided' || state.gameMode === 'cubic';
+                if (shouldLogGuidanceEvents && step === 0 && guidance.phase === 'vacuum-guidance' && guidance.debug && guidance.debug.reason) {
                     const reason = guidance.debug.reason;
                     const useDirectAscent = guidance.debug.useDirectAscent;
                     
@@ -459,18 +462,23 @@ function update(dt) {
     if (dynPress > state.maxQ) state.maxQ = dynPress;
     
     calculateOrbitalElements();
-    
+
+    // Structural integrity — compute every frame, store in state for telemetry + renderer
+    state.structuralData = calculateStructuralLoads();
+    checkStructuralFailure(state.structuralData, addEvent);
+
     // Add to trail
     if (state.time % 0.1 < dt * state.timeWarp) {
         state.trail.push({ x: state.x, y: state.y });
         if (state.trail.length > 10000) state.trail.shift();
     }
     
-    // Gravity turn events
-    if (state.time >= 10.0 && !state.events.some(e => e.text.includes("Gravity turn kick"))) {
+    // Gravity turn events are guidance-mode cues, so hide them in Manual mode.
+    const shouldLogGuidanceEvents = state.gameMode === 'guided' || state.gameMode === 'cubic';
+    if (shouldLogGuidanceEvents && state.time >= 10.0 && !state.events.some(e => e.text.includes("Gravity turn kick"))) {
         addEvent("Gravity turn kick");
     }
-    if (state.time >= 13.0 && !state.events.some(e => e.text.includes("Gravity turn active"))) {
+    if (shouldLogGuidanceEvents && state.time >= 13.0 && !state.events.some(e => e.text.includes("Gravity turn active"))) {
         addEvent("Gravity turn active - thrusting prograde");
     }
     
@@ -506,6 +514,9 @@ function showMenu() {
         state.running = false;
         updateCurrentModeDisplay();
         updateUIForMode();
+        updateGuidanceModeAvailability();
+        populateRocketCard();
+        syncSettingsUI();
         if (wasRunning) {
             const pauseBtn = document.getElementById('pause-btn');
             if (pauseBtn) {
@@ -1264,6 +1275,30 @@ function hideRocketBuilder() {
             wrapper.style.display = 'none';
         }, 300);
     }
+    updateGuidanceModeAvailability();
+    populateRocketCard();
+}
+
+function updateGuidanceModeAvailability() {
+    const guidedCard = document.querySelector('.menu-mode-card[data-mode="guided"]');
+    const cubicCard = document.querySelector('.menu-mode-card[data-mode="cubic"]');
+    const note = document.getElementById('guidance-disabled-note');
+    const custom = isCustomRocket();
+
+    if (guidedCard) guidedCard.classList.toggle('guidance-disabled', custom);
+    if (cubicCard) cubicCard.classList.toggle('guidance-disabled', custom);
+    if (note) note.style.display = custom ? '' : 'none';
+
+    // If a disabled mode is currently selected, deselect it
+    if (custom) {
+        const selected = document.querySelector('.menu-mode-card.selected');
+        if (selected && (selected.dataset.mode === 'guided' || selected.dataset.mode === 'cubic')) {
+            selected.classList.remove('selected');
+            document.querySelectorAll('.menu-mode-info').forEach(b => { b.style.display = 'none'; });
+            const launchBtn = document.getElementById('menu-launch-btn');
+            if (launchBtn) { launchBtn.disabled = true; launchBtn.textContent = 'SELECT A MODE'; }
+        }
+    }
 }
 
 // Initialize menu event handlers
@@ -1310,6 +1345,8 @@ function initMenu() {
         rocketBuilderResetBtn.addEventListener('click', () => {
             resetToDefault();
             populateRocketBuilderContent(rocketBuilderActiveTab);
+            updateGuidanceModeAvailability();
+            populateRocketCard();
         });
     }
     const rocketBuilderTabBasic = document.getElementById('rocket-builder-tab-basic');
@@ -1357,6 +1394,166 @@ function initMenu() {
             btn.classList.add('active');
         });
     });
+
+    // ── Mode card selection + mode info box ──
+    const modeCards = document.querySelectorAll('.menu-mode-card');
+    const modeInfoBlocks = document.querySelectorAll('.menu-mode-info');
+    const modeInfoBox = document.getElementById('mode-info-box');
+    const launchBtn = document.getElementById('menu-launch-btn');
+
+    const launchLabels = {
+        manual: 'LAUNCH — MANUAL CONTROL',
+        guided: 'LAUNCH — GUIDED',
+        cubic:  'LAUNCH — CUBIC GUIDANCE',
+        orbital: 'SPAWN IN ORBIT',
+    };
+
+    modeCards.forEach(card => {
+        card.addEventListener('click', () => {
+            const mode = card.dataset.mode;
+            modeCards.forEach(c => c.classList.remove('selected'));
+            card.classList.add('selected');
+            modeInfoBlocks.forEach(b => { b.style.display = 'none'; });
+            const infoBlock = document.querySelector(`.menu-mode-info[data-mode="${mode}"]`);
+            if (infoBlock) { infoBlock.style.display = ''; }
+            if (modeInfoBox) modeInfoBox.style.display = '';
+            if (launchBtn) {
+                launchBtn.disabled = false;
+                launchBtn.textContent = launchLabels[mode] || 'LAUNCH';
+            }
+        });
+    });
+
+    if (launchBtn) {
+        launchBtn.addEventListener('click', () => {
+            const selected = document.querySelector('.menu-mode-card.selected');
+            if (!selected) return;
+            const mode = selected.dataset.mode;
+            if (mode === 'manual' && startManualBtn)   startManualBtn.click();
+            else if (mode === 'guided' && startGuidedBtn) startGuidedBtn.click();
+            else if (mode === 'cubic'  && startCubicBtn)  startCubicBtn.click();
+            else if (mode === 'orbital' && startOrbitalBtn) startOrbitalBtn.click();
+        });
+    }
+
+    // ── Settings: control mode row ──
+    const controlModeRow = document.getElementById('settings-control-mode-row');
+    const controlModeVal = document.getElementById('settings-control-mode-val');
+    if (controlModeRow) {
+        controlModeRow.addEventListener('click', () => {
+            const isGimbal = state.settings.controlMode === 'gimbal';
+            if (isGimbal) {
+                document.getElementById('control-turnrate-btn')?.click();
+            } else {
+                document.getElementById('control-gimbal-btn')?.click();
+            }
+            if (controlModeVal) {
+                controlModeVal.textContent = isGimbal ? 'TURN RATE ›' : 'GIMBAL ›';
+            }
+        });
+    }
+
+    // ── Settings: aero forces toggle ──
+    const aeroToggle = document.getElementById('aero-forces-toggle');
+    if (aeroToggle) {
+        aeroToggle.addEventListener('change', () => {
+            if (aeroToggle.checked) {
+                document.getElementById('aero-forces-on-btn')?.click();
+            } else {
+                document.getElementById('aero-forces-off-btn')?.click();
+            }
+        });
+    }
+
+    // ── Settings: structural failure toggle ──
+    const structToggle = document.getElementById('struct-fail-toggle');
+    if (structToggle) {
+        structToggle.addEventListener('change', () => {
+            if (structToggle.checked) {
+                document.getElementById('struct-fail-terminate-btn')?.click();
+            } else {
+                document.getElementById('struct-fail-warn-btn')?.click();
+            }
+        });
+    }
+}
+
+function populateRocketCard() {
+    const config = getRocketConfig();
+    const G = 9.81;
+
+    // Masses
+    const totalDryMass = config.stages.reduce((s, st) => s + st.dryMass, 0)
+                       + (config.payload?.mass || 0)
+                       + (config.fairing?.mass || 0);
+    const totalPropellant = config.stages.reduce((s, st) => s + st.propellantMass, 0);
+    const totalMass = totalDryMass + totalPropellant;
+
+    // TWR (sea-level, stage 1 thrust)
+    const twr = config.stages[0].thrust / (totalMass * G);
+
+    // Vac ISP (last stage)
+    const vacIsp = config.stages[config.stages.length - 1].ispVac;
+
+    // Delta-V (Tsiolkovsky, both stages)
+    let remainingMass = totalMass;
+    let totalDV = 0;
+    for (const stage of config.stages) {
+        const m0 = remainingMass;
+        const m1 = remainingMass - stage.propellantMass;
+        if (m1 > 0) totalDV += stage.ispVac * G * Math.log(m0 / m1);
+        remainingMass = m1 - stage.dryMass;
+    }
+
+    // Launch readiness composite (40% TWR, 60% ΔV vs 9400 m/s LEO)
+    const twrScore  = twr < 1.0 ? 0.05 : twr < 1.2 ? 0.5 : twr < 2.5 ? 1.0 : 0.7;
+    const dvScore   = Math.min(1, totalDV / 9400);
+    const readiness = Math.round((twrScore * 0.4 + dvScore * 0.6) * 100);
+    const readinessLabel = readiness < 40 ? 'CRITICAL' : readiness < 65 ? 'MARGINAL' : readiness < 88 ? 'NOMINAL' : 'OPTIMAL';
+
+    // Populate DOM
+    const titleEl   = document.getElementById('menu-rocket-title');
+    const metaEl    = document.getElementById('menu-rocket-meta');
+    const dryEl     = document.getElementById('menu-stat-drymass');
+    const twrEl     = document.getElementById('menu-stat-twr');
+    const ispEl     = document.getElementById('menu-stat-isp');
+    const rdyLabel  = document.getElementById('menu-readiness-label');
+    const rdyFill   = document.getElementById('menu-readiness-fill');
+    const advisory  = document.getElementById('menu-advisory');
+    const advisoryTxt = document.getElementById('menu-advisory-text');
+
+    if (titleEl) titleEl.textContent = config.name || (isCustomRocket() ? 'CUSTOM ROCKET' : 'FALCON-9 MK1');
+    if (metaEl)  metaEl.textContent  = `${config.stages.length} STAGES · ${config.propellantType || 'KEROLOX'}`;
+    if (dryEl)   dryEl.textContent   = totalDryMass >= 1000 ? `${(totalDryMass / 1000).toFixed(0)}t` : `${totalDryMass}kg`;
+    if (twrEl)   twrEl.textContent   = twr.toFixed(2);
+    if (ispEl)   ispEl.textContent   = `${vacIsp}s`;
+
+    if (rdyLabel) rdyLabel.textContent = `${readiness}% — ${readinessLabel}`;
+    if (rdyFill)  rdyFill.style.width = `${readiness}%`;
+
+    // Color readiness bar
+    if (rdyFill) {
+        rdyFill.style.background = readiness < 40 ? '#f44' : readiness < 65 ? '#fa0' : '#0f0';
+    }
+
+    // Advisory
+    let warnText = '';
+    if (twr < 1.2)       warnText = `TWR of ${twr.toFixed(2)} may be insufficient to lift off. Reduce payload mass or increase S1 thrust.`;
+    else if (totalDV < 8000) warnText = `Estimated ΔV of ${(totalDV / 1000).toFixed(1)} km/s is below LEO minimum (~9.4 km/s). Add propellant or reduce dry mass.`;
+
+    if (advisory) advisory.style.display = warnText ? '' : 'none';
+    if (advisoryTxt) advisoryTxt.textContent = warnText;
+}
+
+function syncSettingsUI() {
+    const controlModeVal = document.getElementById('settings-control-mode-val');
+    const aeroToggle     = document.getElementById('aero-forces-toggle');
+    const structToggle   = document.getElementById('struct-fail-toggle');
+    if (controlModeVal) {
+        controlModeVal.textContent = state.settings.controlMode === 'gimbal' ? 'GIMBAL ›' : 'TURN RATE ›';
+    }
+    if (aeroToggle)  aeroToggle.checked  = state.settings.enableAerodynamicForces === true;
+    if (structToggle) structToggle.checked = state.settings.structuralFailureMode === 'terminate';
 }
 
 // Initialize mobile UI panel

@@ -4,6 +4,9 @@ import { state, getAltitude, getTotalMass, getPitch } from './state.js';
 import { getAtmosphericDensity, getCurrentThrust, getAirspeed, getCurrentDragCoefficient, calculateRocketCOG, calculateFuelLevel, calculateCenterOfPressure, getMachNumber } from './physics.js';
 import { formatTime, formatTMinus, getNextEvent } from './events.js';
 import { predictOrbit } from './orbital.js';
+import { drawTelemetryRocketDiagram } from './renderer.js';
+import { utilizationColor } from './structural.js';
+import { updateStructuralPanelVisibility } from './structuralPanel.js';
 
 // Update all telemetry displays
 export function updateTelemetry() {
@@ -15,6 +18,26 @@ export function updateTelemetry() {
     const vVert = state.vx * localUp.x + state.vy * localUp.y;
     const vHoriz = Math.sqrt(Math.max(0, velocity * velocity - vVert * vVert));
     const downrange = Math.atan2(state.x, state.y) * EARTH_RADIUS;
+
+    const flightContent = document.getElementById('telemetry-flight-content');
+    const flightTabBtn = document.getElementById('telemetry-tab-flight');
+    const structuralTabBtn = document.getElementById('telemetry-tab-structural');
+    const structuralActive = state.telemetryTab === 'structural';
+    const showStructuralData = structuralActive || !state.structuralPanelDocked;
+
+    if (flightContent) flightContent.style.display = structuralActive ? 'none' : '';
+    updateStructuralPanelVisibility(structuralActive);
+    if (flightTabBtn) flightTabBtn.classList.toggle('active', !structuralActive);
+    if (structuralTabBtn) structuralTabBtn.classList.toggle('active', structuralActive);
+
+    const telemetryRocketCanvas = document.getElementById('telemetry-rocket-canvas');
+    if (showStructuralData && telemetryRocketCanvas) {
+        drawTelemetryRocketDiagram(telemetryRocketCanvas);
+    }
+
+    if (showStructuralData) {
+        updateStructuralPanel();
+    }
     
     document.getElementById('time').textContent = formatTime(state.time);
     
@@ -355,6 +378,13 @@ export function updateTelemetry() {
         }
     });
     
+    // ── Structural failure flash ─────────────────────────────────────────────
+    const structuralContent = document.getElementById('telemetry-structural-content');
+    if (structuralContent) {
+        const overstressed = state.structuralData && state.structuralData.some(s => s.active && s.utilization >= 1.0);
+        structuralContent.classList.toggle('structural-overstress', !!overstressed);
+    }
+
     // Update burn status display
     const burnStatus = document.getElementById('burn-status');
     if (state.burnMode && state.burnStartTime !== null) {
@@ -376,3 +406,64 @@ export function updateTelemetry() {
     }
 }
 
+function fmtMPa(pa) {
+    return (pa / 1e6).toFixed(1) + ' MPa';
+}
+
+function updateStructuralPanel() {
+    const panel = document.getElementById('structural-sections-panel');
+    if (!panel) return;
+
+    const sections = state.structuralData;
+    if (!sections) {
+        panel.innerHTML = '<div class="structural-no-data">Launch to see structural data</div>';
+        return;
+    }
+
+    let html = '';
+    for (const s of sections) {
+        if (!s.active) continue;
+
+        const u = Math.max(0, s.utilization);
+        const pct = Math.min(100, u * 100).toFixed(0);
+        const color = utilizationColor(u);
+        const overYield = u >= 1.0;
+
+        html += `<div class="structural-section${overYield ? ' overstress' : ''}">`;
+        html += `<div class="structural-section-header">`;
+        html += `<span class="structural-section-name">${s.name}</span>`;
+        html += `<span class="structural-util-label" style="color:${color}">${pct}% yield</span>`;
+        html += `</div>`;
+
+        // Utilization bar
+        html += `<div class="structural-util-bar-bg">`;
+        html += `<div class="structural-util-bar-fill" style="width:${pct}%;background:${color}"></div>`;
+        html += `</div>`;
+
+        // Stress components table
+        html += `<div class="structural-components">`;
+        html += `<div class="structural-row"><span>Hoop</span><span>${fmtMPa(s.hoopStress)}</span></div>`;
+        html += `<div class="structural-row"><span>Axial</span><span>${fmtMPa(s.axialStress)}</span></div>`;
+        html += `<div class="structural-row"><span>Bending</span><span>${fmtMPa(s.bendingStress)}</span></div>`;
+        html += `<div class="structural-row"><span>Shear</span><span>${fmtMPa(s.shearStress)}</span></div>`;
+        html += `<div class="structural-row structural-vm"><span>Von Mises</span><span style="color:${color}">${fmtMPa(s.vonMises)}</span></div>`;
+        html += `<div class="structural-row structural-yield-row"><span>Yield</span><span>${fmtMPa(s.yieldStress)}</span></div>`;
+        html += `</div>`;
+
+        if (overYield) {
+            const remaining = state.settings.structuralFailureMode === 'terminate' && state.structuralFailureTime !== null
+                ? Math.max(0, 3.5 - (state.time - state.structuralFailureTime)).toFixed(1)
+                : null;
+            html += `<div class="structural-warn">${remaining !== null ? `BREAKUP IN ${remaining}s` : 'YIELDING'}</div>`;
+        }
+
+        html += `</div>`;
+    }
+
+    if (!html) {
+        panel.innerHTML = '<div class="structural-no-data">No active stages</div>';
+        return;
+    }
+
+    panel.innerHTML = html;
+}

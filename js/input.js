@@ -3,9 +3,10 @@ import { getRocketConfig } from './rocketConfig.js';
 import { state, initState, getAltitude, resetCurrentMission } from './state.js';
 import { resetGuidance } from './guidance.js';
 import { resetCubicGuidance } from './cubicGuidance.js';
-import { addEvent } from './events.js';
+import { addEvent, initEventsPanel } from './events.js';
 import { updateTelemetry } from './telemetry.js';
 import { getCanvas, resize } from './renderer.js';
+import { initStructuralPanel } from './structuralPanel.js';
 
 // Speed settings
 const speeds = [1, 2, 5, 10, 25, 50, 100, 500, 1000];
@@ -71,6 +72,25 @@ function setupBurnButton(buttonId, burnMode) {
 
 // Initialize all input handlers
 export function initInput() {
+    initEventsPanel();
+
+    const telemetryTabFlightBtn = document.getElementById('telemetry-tab-flight');
+    const telemetryTabStructuralBtn = document.getElementById('telemetry-tab-structural');
+    if (telemetryTabFlightBtn) {
+        telemetryTabFlightBtn.addEventListener('click', () => {
+            state.telemetryTab = 'flight';
+            updateTelemetry();
+        });
+    }
+    if (telemetryTabStructuralBtn) {
+        telemetryTabStructuralBtn.addEventListener('click', () => {
+            state.telemetryTab = 'structural';
+            updateTelemetry();
+        });
+    }
+
+    initStructuralPanel();
+
     // Window resize
     window.addEventListener('resize', resize);
     
@@ -393,19 +413,31 @@ export function initInput() {
     
     // Initialize aerodynamic forces UI
     updateAerodynamicForcesUI();
-    
-    // Settings hamburger toggle
-    const settingsToggleBtn = document.getElementById('settings-toggle-btn');
-    const settingsContent = document.getElementById('settings-content');
-    
-    if (settingsToggleBtn && settingsContent) {
-        settingsToggleBtn.addEventListener('click', () => {
-            const isVisible = settingsContent.style.display !== 'none';
-            settingsContent.style.display = isVisible ? 'none' : 'block';
-            settingsToggleBtn.classList.toggle('active', !isVisible);
+
+    // Structural failure mode toggle
+    const structFailWarnBtn      = document.getElementById('struct-fail-warn-btn');
+    const structFailTerminateBtn = document.getElementById('struct-fail-terminate-btn');
+
+    function updateStructFailUI() {
+        const isTerminate = state.settings.structuralFailureMode === 'terminate';
+        if (structFailWarnBtn)      structFailWarnBtn.classList.toggle('active', !isTerminate);
+        if (structFailTerminateBtn) structFailTerminateBtn.classList.toggle('active', isTerminate);
+    }
+
+    if (structFailWarnBtn) {
+        structFailWarnBtn.addEventListener('click', () => {
+            state.settings.structuralFailureMode = 'warn';
+            updateStructFailUI();
         });
     }
-    
+    if (structFailTerminateBtn) {
+        structFailTerminateBtn.addEventListener('click', () => {
+            state.settings.structuralFailureMode = 'terminate';
+            updateStructFailUI();
+        });
+    }
+    updateStructFailUI();
+
     if (controlTurnRateBtn) {
         controlTurnRateBtn.addEventListener('click', () => {
             state.settings.controlMode = 'turnrate';
@@ -436,7 +468,8 @@ export function initInput() {
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
             
-            // Check if click is on force diagram
+            // Check if click is on force diagram (flight tab only, unless already expanded)
+            const showForceInPanel = state.telemetryTab === 'flight' || state.expandedDiagram === 'forces';
             const diagramSize = state.expandedDiagram === 'forces' ? 300 : 120;
             const gap = 10;
             const rightMargin = 20;
@@ -450,7 +483,7 @@ export function initInput() {
             const forceDiagramTop = centerY - diagramSize / 2;
             const forceDiagramBottom = centerY + diagramSize / 2;
             
-            if (x >= forceDiagramLeft && x <= forceDiagramRight && 
+            if (showForceInPanel && x >= forceDiagramLeft && x <= forceDiagramRight && 
                 y >= forceDiagramTop && y <= forceDiagramBottom) {
                 // Toggle force diagram expansion
                 if (state.expandedDiagram === 'forces') {
@@ -461,28 +494,23 @@ export function initInput() {
                 return;
             }
             
-            // Check if click is on rocket diagram
-            const diagramWidth = state.expandedDiagram === 'rocket' ? 300 : 120;
-            const diagramHeight = state.expandedDiagram === 'rocket' ? 450 : 180;
-            const forceDiagramTopPos = eventsEl ? eventsEl.getBoundingClientRect().bottom + gap : 20 + 320 + gap;
-            const rocketTop = state.expandedDiagram === 'rocket' ? (diagramCanvas.height - diagramHeight) / 2 : forceDiagramTopPos + 120 + gap;
-            const rocketCenterX = state.expandedDiagram === 'rocket' ? diagramCanvas.width / 2 : diagramCanvas.width - rightMargin - diagramWidth / 2;
-            const rocketCenterY = state.expandedDiagram === 'rocket' ? diagramCanvas.height / 2 : rocketTop + diagramHeight / 2;
-            
-            const rocketDiagramLeft = rocketCenterX - diagramWidth / 2;
-            const rocketDiagramRight = rocketCenterX + diagramWidth / 2;
-            const rocketDiagramTop = rocketCenterY - diagramHeight / 2;
-            const rocketDiagramBottom = rocketCenterY + diagramHeight / 2;
-            
-            if (x >= rocketDiagramLeft && x <= rocketDiagramRight && 
-                y >= rocketDiagramTop && y <= rocketDiagramBottom) {
-                // Toggle rocket diagram expansion
-                if (state.expandedDiagram === 'rocket') {
+            // Check if click is on expanded rocket diagram
+            if (state.expandedDiagram === 'rocket') {
+                const diagramWidth = 300;
+                const diagramHeight = 450;
+                const rocketCenterX = diagramCanvas.width / 2;
+                const rocketCenterY = diagramCanvas.height / 2;
+
+                const rocketDiagramLeft = rocketCenterX - diagramWidth / 2;
+                const rocketDiagramRight = rocketCenterX + diagramWidth / 2;
+                const rocketDiagramTop = rocketCenterY - diagramHeight / 2;
+                const rocketDiagramBottom = rocketCenterY + diagramHeight / 2;
+
+                if (x >= rocketDiagramLeft && x <= rocketDiagramRight &&
+                    y >= rocketDiagramTop && y <= rocketDiagramBottom) {
                     state.expandedDiagram = null;
-                } else {
-                    state.expandedDiagram = 'rocket';
+                    return;
                 }
-                return;
             }
         });
     }
