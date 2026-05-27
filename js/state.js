@@ -16,6 +16,7 @@ export const state = {
     fairingJettisoned: false,
     maxQ: 0,
     events: [],
+    eventsCollapsed: false,
     apoapsis: 0,
     periapsis: 0,
     engineOn: false,
@@ -35,6 +36,9 @@ export const state = {
     targetAltitude: 500000, // for guided mode, default 500km
     orbitalSpawnAltitude: 500000, // for orbital mode, default 500km
     guidanceRecommendation: null, // stores current guidance pitch for manual mode
+    telemetryTab: 'flight', // 'flight' | 'structural'
+    structuralPanelDocked: true,
+    structuralPanelPosition: { x: 20, y: 200 },
     
     // Rotational dynamics state
     // Rocket orientation angle (radians) - angle from local vertical (up)
@@ -50,10 +54,15 @@ export const state = {
     
     // Settings
     settings: {
-        controlMode: 'turnrate',  // 'turnrate' or 'gimbal'
-        enableAerodynamicForces: false  // Only applies in gimbal control mode
+        controlMode: 'turnrate',        // 'turnrate' or 'gimbal'
+        enableAerodynamicForces: false, // Only applies in gimbal control mode
+        structuralFailureMode: 'warn'   // 'warn' or 'terminate'
     },
     
+    // Structural integrity data (updated each frame)
+    structuralData: null,        // array of section stress objects from structural.js
+    structuralFailureTime: null, // mission time when first overstress detected (null = no failure)
+
     // Diagram expansion state
     expandedDiagram: null,  // null, 'forces', or 'rocket'
     
@@ -115,7 +124,10 @@ export function initState() {
         state.manualPitch = null;
     }
     state.guidanceRecommendation = null;
-    
+    state.telemetryTab = 'flight';
+    state.structuralData = null;
+    state.structuralFailureTime = null;
+
     // Reset rotational dynamics
     state.rocketAngle = 0;        // Start pointing straight up
     state.angularVelocity = 0;
@@ -193,7 +205,10 @@ export function spawnInOrbit(altitude = 500000) {
     state.guidanceThrottle = 0.0;
     state.manualPitch = null;
     state.guidanceRecommendation = null;
-    
+    state.telemetryTab = 'flight';
+    state.structuralData = null;
+    state.structuralFailureTime = null;
+
     // Initialize rotational state for orbital mode
     // Rocket should be oriented prograde (along velocity vector)
     // In our coordinate system at (0, r) moving (+vx, 0), prograde is horizontal

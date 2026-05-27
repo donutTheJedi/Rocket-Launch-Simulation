@@ -3,6 +3,7 @@ import { getRocketConfig } from './rocketConfig.js';
 import { state, getAltitude } from './state.js';
 import { computeGuidance } from './guidance.js';
 import { calculateRocketCOG, calculateCenterOfPressure, getMachNumber, getAirspeed } from './physics.js';
+import { utilizationColorRgba } from './structural.js';
 
 // Canvas and context (set by init)
 let canvas = null;
@@ -560,18 +561,224 @@ export function render() {
     ctx.font = '11px Courier New';
     ctx.fillText(`${metersPerPixel < 1000 ? metersPerPixel.toFixed(1) + ' m/px' : (metersPerPixel/1000).toFixed(2) + ' km/px'}`, 10, canvas.height - 10);
     
-    // Draw diagrams - show expanded version if expanded, otherwise show normal version
-    if (state.expandedDiagram === 'forces') {
-        drawForceDiagram(ctx, canvas, true);
-    } else {
-        drawForceDiagram(ctx, canvas, false);
+    // Draw diagrams
+    const showForceDiagram = state.telemetryTab === 'flight' || state.expandedDiagram === 'forces';
+    if (showForceDiagram) {
+        if (state.expandedDiagram === 'forces') {
+            drawForceDiagram(ctx, canvas, true);
+        } else {
+            drawForceDiagram(ctx, canvas, false);
+        }
     }
-    
-    if (state.expandedDiagram === 'rocket') {
-        drawRocketDiagram(ctx, canvas, true);
-    } else {
-        drawRocketDiagram(ctx, canvas, false);
+
+    const showRocketDiagram = state.expandedDiagram === 'rocket';
+    if (showRocketDiagram) {
+        if (state.expandedDiagram === 'rocket') {
+            drawRocketDiagram(ctx, canvas, true);
+        } else {
+            drawRocketDiagram(ctx, canvas, false);
+        }
     }
+}
+
+// Draw a compact rocket diagram inside telemetry UI canvas with stress heat-map overlay.
+export function drawTelemetryRocketDiagram(targetCanvas) {
+    if (!targetCanvas) return;
+    const uiCtx = targetCanvas.getContext('2d');
+    if (!uiCtx) return;
+
+    const width = targetCanvas.width;
+    const height = targetCanvas.height;
+    uiCtx.clearRect(0, 0, width, height);
+    uiCtx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    uiCtx.fillRect(0, 0, width, height);
+
+    const config = getRocketConfig();
+    const cogData = calculateRocketCOG();
+    const rocketLength = cogData.rocketLength;
+    if (!rocketLength || rocketLength <= 0) return;
+
+    const cogPosition = cogData.cog;
+    let cpPosition = cogPosition;
+    const altitude = getAltitude();
+    if (altitude < 70000) {
+        const { airspeed } = getAirspeed();
+        if (airspeed > 1e-3) {
+            const mach = getMachNumber(airspeed, altitude);
+            cpPosition = calculateCenterOfPressure(mach, rocketLength);
+        }
+    }
+
+    const centerX = width / 2;
+    // Leave room at top for labels
+    const topPad    = 32;
+    const bottomPad = 8;
+    const displayLength = height - topPad - bottomPad;
+    const scale      = displayLength / rocketLength;
+    const displayWidth = Math.max(10, config.stages[0].diameter * scale * 1.8);
+    const halfWidth  = displayWidth / 2;
+
+    // Helper: convert rocket position (0 = bottom) to canvas Y
+    // Body drawn top = topPad (rocket top), bottom = topPad + displayLength (rocket bottom)
+    const rocketTopY    = topPad;
+    const rocketBottomY = topPad + displayLength;
+    function zToY(z) {
+        return rocketBottomY - z * scale;
+    }
+
+    uiCtx.save();
+    uiCtx.translate(centerX, 0);
+
+    // ── Structural stress sections (colored bands) ────────────────────────
+    const sections = state.structuralData;
+    const stages = config.stages;
+
+    // Build segment list: { zBottom, zTop, baseUtil, topUtil }
+    // We interpolate utilization between known section points for a gradient effect.
+    function sectionUtilForSegment(zMid) {
+        if (!sections) return 0;
+        const active = sections.filter(s => s.active);
+        if (!active.length) return 0;
+        // Find nearest section below and above
+        let below = null, above = null;
+        for (const s of active) {
+            if (s.positionZ <= zMid) {
+                if (!below || s.positionZ > below.positionZ) below = s;
+            } else {
+                if (!above || s.positionZ < above.positionZ) above = s;
+            }
+        }
+        if (below && above) {
+            const t = (zMid - below.positionZ) / (above.positionZ - below.positionZ);
+            return below.utilization * (1 - t) + above.utilization * t;
+        }
+        if (below) return below.utilization;
+        if (above) return above.utilization;
+        return 0;
+    }
+
+    // Draw body as gradient-filled segments (Stage 1, Stage 2, Payload, Fairing)
+    const segDefs = [];
+    let z = 0;
+
+    if (state.currentStage === 0) {
+        segDefs.push({ zBottom: z, zTop: z + stages[0].length, type: 'stage1' });
+        z += stages[0].length;
+    }
+    if (state.currentStage <= 1) {
+        segDefs.push({ zBottom: z, zTop: z + stages[1].length, type: 'stage2' });
+        z += stages[1].length;
+    }
+    segDefs.push({ zBottom: z, zTop: z + config.payload.length, type: 'payload' });
+    z += config.payload.length;
+    if (!state.fairingJettisoned) {
+        segDefs.push({ zBottom: z, zTop: z + config.fairing.length, type: 'fairing' });
+    }
+
+    for (const seg of segDefs) {
+        const yTop    = zToY(seg.zTop);
+        const yBottom = zToY(seg.zBottom);
+        const segH    = yBottom - yTop;
+        if (segH <= 0) continue;
+
+        if (seg.type === 'fairing') {
+            // Cone — no stress gradient, just structural base color
+            uiCtx.fillStyle = '#8a4a4a';
+            uiCtx.beginPath();
+            uiCtx.moveTo(0, yTop);
+            uiCtx.lineTo(-halfWidth, yBottom);
+            uiCtx.lineTo(halfWidth, yBottom);
+            uiCtx.closePath();
+            uiCtx.fill();
+            uiCtx.strokeStyle = '#aaa';
+            uiCtx.lineWidth = 0.5;
+            uiCtx.stroke();
+        } else {
+            // Draw a vertical gradient matching stress utilization
+            const steps = Math.max(4, Math.floor(segH / 4));
+            for (let i = 0; i < steps; i++) {
+                const t0 = i / steps;
+                const t1 = (i + 1) / steps;
+                const zMid = seg.zBottom + (seg.zTop - seg.zBottom) * (1 - (t0 + t1) / 2);
+                const u = sectionUtilForSegment(zMid);
+                const y0 = yTop + t0 * segH;
+                const y1 = yTop + t1 * segH;
+                uiCtx.fillStyle = utilizationColorRgba(u, 0.85);
+                uiCtx.fillRect(-halfWidth, y0, displayWidth, y1 - y0 + 0.5);
+            }
+            // Outline
+            uiCtx.strokeStyle = 'rgba(180,180,180,0.4)';
+            uiCtx.lineWidth = 0.5;
+            uiCtx.strokeRect(-halfWidth, yTop, displayWidth, segH);
+        }
+    }
+
+    // ── Section marker lines ──────────────────────────────────────────────
+    if (sections) {
+        for (const s of sections) {
+            if (!s.active) continue;
+            const y = zToY(s.positionZ);
+            uiCtx.strokeStyle = 'rgba(255,255,255,0.5)';
+            uiCtx.lineWidth = 1;
+            uiCtx.setLineDash([3, 3]);
+            uiCtx.beginPath();
+            uiCtx.moveTo(-halfWidth - 4, y);
+            uiCtx.lineTo(halfWidth + 4, y);
+            uiCtx.stroke();
+            uiCtx.setLineDash([]);
+        }
+    }
+
+    // ── COG line ─────────────────────────────────────────────────────────
+    const cogY = zToY(cogPosition);
+    uiCtx.strokeStyle = '#0f0';
+    uiCtx.lineWidth = 1.5;
+    uiCtx.beginPath();
+    uiCtx.moveTo(-halfWidth - 8, cogY);
+    uiCtx.lineTo(halfWidth + 8, cogY);
+    uiCtx.stroke();
+    uiCtx.fillStyle = '#0f0';
+    uiCtx.beginPath();
+    uiCtx.arc(0, cogY, 3, 0, Math.PI * 2);
+    uiCtx.fill();
+
+    // ── CoP line ─────────────────────────────────────────────────────────
+    const cpY = zToY(cpPosition);
+    uiCtx.strokeStyle = '#0ff';
+    uiCtx.lineWidth = 1;
+    uiCtx.beginPath();
+    uiCtx.moveTo(-halfWidth - 8, cpY);
+    uiCtx.lineTo(halfWidth + 8, cpY);
+    uiCtx.stroke();
+    uiCtx.fillStyle = '#0ff';
+    uiCtx.beginPath();
+    uiCtx.arc(0, cpY, 2, 0, Math.PI * 2);
+    uiCtx.fill();
+
+    uiCtx.restore();
+
+    // ── Legend text ───────────────────────────────────────────────────────
+    uiCtx.font = '9px Courier New';
+    uiCtx.textAlign = 'left';
+    uiCtx.fillStyle = '#0f0';
+    uiCtx.fillText(`COG ${(cogData.cogFraction * 100).toFixed(0)}%`, 4, 12);
+    uiCtx.fillStyle = '#0ff';
+    uiCtx.fillText(`CoP ${(rocketLength > 0 ? (cpPosition / rocketLength) * 100 : 0).toFixed(0)}%`, 4, 22);
+
+    // Stress legend
+    const legendX = width - 38;
+    const legendItems = [
+        { color: '#00c800', label: '<50%' },
+        { color: '#d4d400', label: '<75%' },
+        { color: '#e07000', label: '<100%' },
+        { color: '#e00000', label: '>100%' }
+    ];
+    legendItems.forEach((item, i) => {
+        uiCtx.fillStyle = item.color;
+        uiCtx.fillRect(legendX, 6 + i * 11, 8, 8);
+        uiCtx.fillStyle = '#ccc';
+        uiCtx.fillText(item.label, legendX + 10, 14 + i * 11);
+    });
 }
 
 // Draw force diagram in top right, beneath Mission Events (position updates with events panel height)
@@ -691,11 +898,19 @@ function drawRocketDiagram(ctx, canvas, expanded = false) {
     const rightMargin = 20;
     
     const eventsEl = document.getElementById('events');
+    const telemetryEl = document.getElementById('telemetry');
     const forceDiagramTop = eventsEl ? eventsEl.getBoundingClientRect().bottom + gap : 20 + 320 + gap;
-    const top = expanded ? (canvas.height - diagramHeight) / 2 : forceDiagramTop + 120 + gap;
+    const telemetryRect = telemetryEl ? telemetryEl.getBoundingClientRect() : null;
+    const structuralTop = telemetryRect ? telemetryRect.bottom + gap : forceDiagramTop + 120 + gap;
+    const top = expanded
+        ? (canvas.height - diagramHeight) / 2
+        : (state.telemetryTab === 'structural' ? structuralTop : forceDiagramTop + 120 + gap);
     
     // If expanded, center it on screen
-    const centerX = expanded ? canvas.width / 2 : canvas.width - rightMargin - diagramWidth / 2;
+    const structuralCenterX = telemetryRect ? (telemetryRect.left + telemetryRect.width / 2) : (canvas.width - rightMargin - diagramWidth / 2);
+    const centerX = expanded
+        ? canvas.width / 2
+        : (state.telemetryTab === 'structural' ? structuralCenterX : canvas.width - rightMargin - diagramWidth / 2);
     const centerY = expanded ? canvas.height / 2 : top + diagramHeight / 2;
     
     // Background

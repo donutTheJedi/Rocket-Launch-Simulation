@@ -10,6 +10,8 @@ export const SEA_LEVEL_DENSITY = 1.225;
 
 // Rocket configuration (Falcon 9-like)
 export const ROCKET_CONFIG = {
+    name: "FALCON-9 MK1",
+    propellantType: "KEROLOX",
     stages: [
         {
             name: "Stage 1",
@@ -25,6 +27,9 @@ export const ROCKET_CONFIG = {
             engineLength: 3.0,          // Length of engine section at bottom (m)
             dryMassEngineFraction: 0.6, // Fraction of dry mass in engines (bottom)
             dragCoeff: 0.3,
+            // Structure properties
+            wallThickness: 0.004,        // m (Al-Li tank wall nominal)
+            yieldStress: 276e6,          // Pa (Al-Li 2195)
             // Gimbal configuration (Merlin 1D specs)
             gimbalMaxAngle: 5.0,        // degrees - max gimbal deflection
             gimbalRate: 20.0,           // degrees/second - gimbal actuator rate
@@ -44,12 +49,20 @@ export const ROCKET_CONFIG = {
             engineLength: 2.0,          // Length of engine section at bottom (m)
             dryMassEngineFraction: 0.5, // Fraction of dry mass in engines (bottom)
             dragCoeff: 0.25,
+            // Structure properties
+            wallThickness: 0.004,        // m (Al-Li tank wall nominal)
+            yieldStress: 276e6,          // Pa (Al-Li 2195)
             // Gimbal configuration (MVac specs)
             gimbalMaxAngle: 5.0,        // degrees - max gimbal deflection  
             gimbalRate: 15.0,           // degrees/second - gimbal actuator rate
             gimbalPoint: 0.3            // meters from stage bottom - gimbal pivot point
         }
     ],
+    interstage: {
+        // Orthogrid structure defaults (weaker/lighter than pressurized tanks)
+        wallThickness: 0.003,          // m
+        yieldStress: 200e6             // Pa
+    },
     payload: {
         mass: 15000,
         length: 5,          // Payload section length (m)
@@ -58,7 +71,9 @@ export const ROCKET_CONFIG = {
     fairing: {
         mass: 1700,
         length: 4,          // Fairing length (m) - cone shape on top
-        diameter: 3.7
+        diameter: 3.7,
+        wallThickness: 0.004,          // m
+        yieldStress: 276e6             // Pa
     },
     fairingJettisonAlt: 110000,
     totalLength: 70,        // Total rocket length (m)

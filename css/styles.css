@@ -25,6 +25,10 @@ body {
 }
 
 #canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 0;
     background: #000;
     display: block;
     touch-action: none;
@@ -168,6 +172,7 @@ body {
     position: fixed;
     top: 20px;
     left: 20px;
+    z-index: 100;
     color: #0f0;
     font-size: 13px;
     line-height: 1.6;
@@ -184,6 +189,261 @@ body {
     border-bottom: 1px solid #0ff;
     padding-bottom: 5px;
 }
+
+.telemetry-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+.telemetry-tab {
+    flex: 1;
+    padding: 6px 8px;
+    font-size: 11px;
+    border: 1px solid #0ff;
+    color: #0ff;
+    background: rgba(0, 255, 255, 0.08);
+}
+
+.telemetry-tab:hover {
+    background: rgba(0, 255, 255, 0.2);
+    color: #0ff;
+}
+
+.telemetry-tab.active {
+    background: #0ff;
+    color: #000;
+    font-weight: bold;
+}
+
+.telemetry-structural-dock {
+    margin-top: 4px;
+}
+
+.structural-panel {
+    font-family: 'Courier New', monospace;
+}
+
+.structural-panel--docked {
+    width: 100%;
+}
+
+.structural-panel--floating {
+    position: fixed;
+    z-index: 99; /* below telemetry (100) and mission menu (1000) */
+    width: min(300px, calc(100vw - 16px));
+    max-height: min(85vh, 640px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    color: #0f0;
+    font-size: 13px;
+    line-height: 1.6;
+    background: rgba(0, 0, 0, 0.92);
+    padding: 0 12px 12px;
+    border: 1px solid #0f0;
+    border-radius: 5px;
+    box-shadow: 0 8px 32px rgba(0, 255, 0, 0.15);
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+
+body.structural-panel-dragging .structural-panel--floating {
+    cursor: grabbing;
+}
+
+.structural-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0 6px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid #0ff;
+}
+
+.structural-panel-grip {
+    color: #0a6;
+    font-size: 14px;
+    letter-spacing: -2px;
+    line-height: 1;
+}
+
+.structural-panel-title {
+    flex: 1;
+    color: #0ff;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 0.06em;
+}
+
+.structural-panel-dock-btn {
+    flex-shrink: 0;
+    width: 28px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid #0ff;
+    border-radius: 3px;
+    background: rgba(0, 255, 255, 0.1);
+    color: #0ff;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.structural-panel-dock-btn:hover {
+    background: rgba(0, 255, 255, 0.25);
+    color: #fff;
+}
+
+/* Anchor only — do not cover the viewport (was blocking the sim canvas). */
+#structural-panel-float-root {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 0;
+    height: 0;
+    overflow: visible;
+    pointer-events: none;
+    z-index: 99;
+}
+
+#structural-panel-float-root .structural-panel--floating {
+    pointer-events: auto;
+}
+
+.telemetry-structural-diagram-section {
+    text-align: center;
+    padding-bottom: 4px;
+}
+
+.telemetry-structural-diagram-title {
+    color: #0ff;
+    font-size: 11px;
+    margin-bottom: 6px;
+    letter-spacing: 0.05em;
+}
+
+#telemetry-rocket-canvas {
+    width: 100%;
+    max-width: 160px;
+    height: 300px;
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid #0ff;
+    border-radius: 4px;
+    display: block;
+    margin: 0 auto;
+}
+
+/* Structural telemetry panel — section cards */
+#structural-sections-panel {
+    margin-top: 6px;
+}
+
+.structural-section {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 6px 8px;
+    margin-bottom: 6px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+}
+
+.structural-section.overstress {
+    border-color: #e00000;
+    animation: structural-flash 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes structural-flash {
+    from { background: rgba(80, 0, 0, 0.3); }
+    to   { background: rgba(140, 0, 0, 0.15); }
+}
+
+.structural-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.structural-section-name {
+    color: #ccc;
+    font-weight: bold;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.structural-util-label {
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.structural-util-bar-bg {
+    height: 5px;
+    background: #222;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+
+.structural-util-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.1s, background 0.1s;
+}
+
+.structural-components {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px 6px;
+}
+
+.structural-row {
+    display: flex;
+    justify-content: space-between;
+    color: #999;
+    font-size: 10px;
+    padding: 1px 0;
+}
+
+.structural-row span:last-child {
+    color: #ddd;
+}
+
+.structural-vm {
+    color: #bbb;
+    font-size: 10.5px;
+}
+
+.structural-vm span:first-child {
+    font-weight: bold;
+    color: #bbb;
+}
+
+.structural-yield-row span:last-child {
+    color: #888;
+}
+
+.structural-warn {
+    margin-top: 5px;
+    text-align: center;
+    font-size: 11px;
+    font-weight: bold;
+    color: #ff2020;
+    letter-spacing: 0.06em;
+    animation: structural-flash 0.4s ease-in-out infinite alternate;
+}
+
+.structural-no-data {
+    color: #555;
+    font-size: 11px;
+    text-align: center;
+    padding: 12px 0;
+}
+
+
 
 .section {
     margin: 10px 0;
@@ -204,6 +464,7 @@ body {
     position: fixed;
     bottom: 20px;
     left: 20px;
+    z-index: 100;
     display: flex;
     gap: 10px;
     transition: left 0.3s ease;
@@ -240,6 +501,7 @@ button:disabled {
     position: fixed;
     top: 20px;
     right: 20px;
+    z-index: 100;
     color: #0ff;
     font-size: 12px;
     background: rgba(0, 0, 0, 0.7);
@@ -294,9 +556,34 @@ button:disabled {
 }
 
 #events h3 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
     margin-bottom: 10px;
     border-bottom: 1px solid #0ff;
     padding-bottom: 5px;
+}
+
+.events-collapse-btn {
+    width: 24px;
+    height: 20px;
+    min-width: 24px;
+    padding: 0;
+    font-size: 12px;
+    line-height: 1;
+    border: 1px solid #0ff;
+    color: #0ff;
+    background: rgba(0, 255, 255, 0.08);
+}
+
+#events.events-collapsed .event:not(:first-child) {
+    display: none;
+}
+
+#events.events-collapsed #event-list {
+    max-height: 28px;
+    overflow: hidden;
 }
 
 .event {
@@ -422,290 +709,455 @@ button:disabled {
     text-transform: uppercase;
 }
 
-/* Menu Panel */
+/* ═══════════════════════════════════ MENU PANEL ═══════════════════════════════════ */
 #menu-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
     background: rgba(0, 0, 0, 0.5);
     z-index: 999;
 }
 
 #menu-panel {
     position: fixed;
-    top: 0;
-    right: 0;
+    top: 0; right: 0;
     width: 400px;
     max-width: 90vw;
     height: 100%;
-    background: rgba(0, 0, 0, 0.95);
-    border-left: 2px solid #0ff;
+    background: rgba(4, 8, 6, 0.98);
+    border-left: 2px solid rgba(0, 255, 255, 0.4);
     z-index: 1000;
     overflow-y: auto;
     padding: 20px;
     transform: translateX(100%);
     transition: transform 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
 }
 
-#menu-panel.show {
-    transform: translateX(0);
-}
+#menu-panel.show { transform: translateX(0); }
 
 .menu-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
-    padding-bottom: 15px;
-    border-bottom: 2px solid #0ff;
+    padding-bottom: 14px;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+    flex-shrink: 0;
 }
 
 .menu-header h2 {
     color: #0ff;
-    font-size: 24px;
+    font-size: 20px;
+    letter-spacing: 0.18em;
     margin: 0;
 }
 
 .menu-close {
     background: transparent;
-    border: 1px solid #0ff;
+    border: 1px solid rgba(0, 255, 255, 0.4);
     color: #0ff;
-    font-size: 28px;
-    width: 40px;
-    height: 40px;
-    padding: 0;
-    line-height: 1;
+    font-size: 24px;
+    width: 34px; height: 34px;
+    padding: 0; line-height: 1;
     cursor: pointer;
+    font-family: 'Courier New', monospace;
+    transition: all 0.15s;
+    border-radius: 2px;
+}
+.menu-close:hover { background: rgba(0, 255, 255, 0.15); border-color: #0ff; }
+
+/* ── Section groups ── */
+.menu-sg { display: flex; flex-direction: column; gap: 10px; }
+
+.menu-sg-label {
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: rgba(0, 255, 255, 0.45);
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.1);
 }
 
-.menu-close:hover {
-    background: #0ff;
-    color: #000;
+/* ── Flight mode cards ── */
+.menu-mode-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
 }
 
-.current-mode {
-    background: rgba(0, 255, 255, 0.1);
-    border: 1px solid #0ff;
-    padding: 10px;
-    margin-bottom: 20px;
-    text-align: center;
+.menu-mode-card {
+    background: rgba(0, 20, 18, 0.8);
+    border: 1px solid rgba(0, 255, 255, 0.2);
     color: #0ff;
-    font-size: 14px;
+    padding: 14px 12px 12px;
+    cursor: pointer;
+    text-align: left;
+    font-family: 'Courier New', monospace;
+    transition: border-color 0.15s, background 0.15s;
+    border-radius: 3px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.menu-mode-card:hover {
+    background: rgba(0, 255, 255, 0.06);
+    border-color: rgba(0, 255, 255, 0.55);
+}
+.menu-mode-card.selected {
+    border-color: #0ff;
+    background: rgba(0, 255, 255, 0.08);
+    box-shadow: 0 0 0 1px rgba(0, 255, 255, 0.25);
 }
 
-.menu-section {
-    margin-bottom: 30px;
-    padding: 15px;
-    background: rgba(0, 255, 255, 0.05);
-    border: 1px solid #0ff;
-    border-radius: 5px;
-}
-
-.menu-section h3 {
+.menu-mode-card-label {
+    font-size: 13px;
+    font-weight: bold;
+    letter-spacing: 0.1em;
     color: #0ff;
-    margin-bottom: 10px;
-    font-size: 18px;
+}
+.menu-mode-card.selected .menu-mode-card-label { color: #fff; }
+
+.menu-mode-card-sub {
+    font-size: 10px;
+    color: rgba(0, 255, 200, 0.55);
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
 }
 
-.menu-description {
-    color: #888;
-    font-size: 12px;
-    margin-bottom: 15px;
+.menu-mode-badges {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+    margin-top: 2px;
+}
+
+.mode-badge {
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 2px;
+    letter-spacing: 0.08em;
+    font-weight: bold;
+    white-space: nowrap;
+}
+.mode-badge--hard   { background: rgba(200, 50, 50, 0.25); border: 1px solid rgba(200, 50, 50, 0.6); color: #f87; }
+.mode-badge--medium { background: rgba(200, 140, 30, 0.2); border: 1px solid rgba(200, 140, 30, 0.5); color: #eb8; }
+.mode-badge--easy   { background: rgba(30, 180, 80, 0.15); border: 1px solid rgba(30, 180, 80, 0.45); color: #6d8; }
+.mode-badge--tag    { background: transparent; border: 1px solid rgba(0, 255, 255, 0.3); color: rgba(0, 255, 200, 0.7); font-weight: normal; }
+
+/* Guidance unavailable */
+.menu-guidance-note {
+    font-size: 10px;
+    color: #c84;
+    padding: 6px 10px;
+    border: 1px solid rgba(200, 130, 60, 0.3);
+    border-radius: 3px;
+    background: rgba(200, 130, 60, 0.06);
     line-height: 1.4;
 }
-
-.menu-input-group {
-    margin-bottom: 15px;
+.menu-mode-card.guidance-disabled {
+    opacity: 0.25;
+    cursor: not-allowed;
+    pointer-events: none;
 }
 
+/* Mode info box */
+.menu-mode-infobox {
+    border: 1px solid rgba(0, 255, 255, 0.15);
+    border-radius: 3px;
+    padding: 14px;
+    background: rgba(0, 20, 18, 0.6);
+}
+.menu-mode-infotext {
+    color: rgba(0, 255, 200, 0.65);
+    font-size: 11px;
+    line-height: 1.6;
+    margin-bottom: 12px;
+}
+.menu-mode-infotext:last-child { margin-bottom: 0; }
+
+.menu-input-group { margin-top: 4px; }
 .menu-input-group label {
     display: block;
-    color: #0ff;
+    color: rgba(0, 255, 255, 0.5);
     margin-bottom: 5px;
-    font-size: 12px;
+    font-size: 10px;
+    letter-spacing: 0.1em;
 }
-
 .menu-input-group input {
     width: 100%;
     padding: 8px;
-    background: #222;
-    border: 1px solid #0ff;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(0, 255, 255, 0.4);
     color: #0f0;
     font-family: 'Courier New', monospace;
     font-size: 14px;
+    border-radius: 2px;
 }
-
 .menu-input-group input:focus {
     outline: none;
     border-color: #0f0;
-    background: #333;
+    background: rgba(0, 20, 0, 0.6);
 }
 
 .menu-preset-buttons {
     display: flex;
     gap: 5px;
-    margin-bottom: 15px;
     flex-wrap: wrap;
+    margin-top: 10px;
 }
-
 .preset-btn {
     flex: 1;
-    min-width: 60px;
-    padding: 8px;
-    background: #222;
-    border: 1px solid #0ff;
+    min-width: 52px;
+    padding: 8px 4px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    color: rgba(0, 255, 200, 0.7);
+    font-size: 11px;
+    font-family: 'Courier New', monospace;
+    cursor: pointer;
+    transition: all 0.15s;
+    border-radius: 2px;
+}
+.preset-btn:hover { background: rgba(0, 255, 255, 0.1); border-color: #0ff; color: #0ff; }
+.preset-btn.active { background: rgba(0, 255, 255, 0.15); border-color: #0ff; color: #0ff; font-weight: bold; }
+
+/* ── Rocket config card ── */
+.menu-rocket-card {
+    border: 1px solid rgba(0, 255, 255, 0.25);
+    border-radius: 4px;
+    padding: 16px;
+    background: rgba(0, 20, 18, 0.7);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.menu-rocket-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.menu-rocket-name {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 3px;
+}
+.menu-rocket-icon { color: #0ff; font-size: 13px; }
+.menu-rocket-name span:last-child {
     color: #0ff;
+    font-size: 15px;
+    font-weight: bold;
+    letter-spacing: 0.08em;
+}
+.menu-rocket-meta {
+    color: rgba(0, 255, 200, 0.45);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+}
+
+.menu-build-inline-btn {
+    padding: 6px 12px;
+    background: transparent;
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    color: rgba(0, 255, 200, 0.6);
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: all 0.15s;
+    border-radius: 2px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.menu-build-inline-btn:hover { border-color: #0ff; color: #0ff; background: rgba(0, 255, 255, 0.08); }
+
+.menu-rocket-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    border-top: 1px solid rgba(0, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(0, 255, 255, 0.1);
+    padding: 12px 0;
+}
+.menu-rocket-stat { text-align: center; }
+.menu-rocket-stat-val {
+    color: #0f0;
+    font-size: 18px;
+    font-weight: bold;
+    letter-spacing: 0.04em;
+    line-height: 1.1;
+}
+.menu-rocket-stat-label {
+    color: rgba(0, 255, 100, 0.4);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    margin-top: 3px;
+}
+
+.menu-readiness { display: flex; flex-direction: column; gap: 6px; }
+.menu-readiness-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: rgba(0, 255, 200, 0.45);
+}
+#menu-readiness-label { color: rgba(0, 255, 100, 0.75); }
+.menu-readiness-bg {
+    height: 5px;
+    background: rgba(0, 255, 100, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.menu-readiness-fill {
+    height: 100%;
+    background: #0f0;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+}
+
+/* Advisory / warning box */
+.menu-advisory {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid rgba(200, 140, 30, 0.4);
+    border-radius: 3px;
+    background: rgba(200, 140, 30, 0.06);
+    font-size: 11px;
+    color: rgba(220, 170, 60, 0.85);
+    line-height: 1.5;
+}
+.menu-advisory-icon { flex-shrink: 0; font-size: 13px; }
+
+/* ── Settings list ── */
+.menu-settings-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.menu-srow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 11px 0;
+    border-bottom: 1px solid rgba(0, 255, 100, 0.08);
+}
+.menu-srow:last-child { border-bottom: none; }
+
+.menu-srow--clickable { cursor: pointer; }
+.menu-srow--clickable:hover .menu-srow-key { color: #0ff; }
+.menu-srow--clickable:hover .menu-srow-val { color: #0ff; }
+
+.menu-srow-key {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: rgba(0, 255, 150, 0.5);
+    transition: color 0.15s;
+}
+.menu-srow-val {
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: rgba(0, 255, 150, 0.8);
+    transition: color 0.15s;
+}
+
+/* iOS-style toggle switch */
+.menu-toggle { position: relative; display: inline-flex; cursor: pointer; }
+.menu-toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+.menu-toggle-track {
+    display: block;
+    width: 40px; height: 22px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 11px;
+    position: relative;
+    transition: background 0.2s, border-color 0.2s;
+}
+.menu-toggle-track::after {
+    content: '';
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 14px; height: 14px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    transition: transform 0.2s, background 0.2s;
+}
+.menu-toggle input:checked ~ .menu-toggle-track {
+    background: rgba(0, 200, 80, 0.25);
+    border-color: rgba(0, 255, 100, 0.6);
+}
+.menu-toggle input:checked ~ .menu-toggle-track::after {
+    transform: translateX(18px);
+    background: #0f0;
+}
+
+/* Hidden toggle buttons (for input.js compat) */
+.toggle-buttons { display: flex; gap: 4px; }
+.toggle-btn {
+    padding: 6px 10px;
+    background: #111;
+    border: 1px solid rgba(0, 255, 0, 0.4);
+    color: #0f0;
+    font-family: 'Courier New', monospace;
     font-size: 11px;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.15s;
+    border-radius: 2px;
 }
+.toggle-btn:hover { background: rgba(0, 255, 0, 0.15); border-color: #0f0; }
+.toggle-btn.active { background: #0f0; border-color: #0f0; color: #000; font-weight: bold; }
 
-.preset-btn:hover {
-    background: #0ff;
-    color: #000;
-}
+/* Preserved for input.js */
+.setting-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.setting-label { color: #0f0; font-size: 12px; }
+.setting-description { color: #555; font-size: 10px; margin: 0 0 10px; font-style: italic; line-height: 1.4; }
 
-.preset-btn.active {
-    background: #0ff;
-    color: #000;
+/* ── Launch button ── */
+.menu-launch-btn {
+    width: 100%;
+    padding: 15px;
+    background: rgba(0, 255, 0, 0.08);
+    border: 1px solid rgba(0, 255, 0, 0.35);
+    color: rgba(0, 255, 0, 0.5);
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
     font-weight: bold;
+    letter-spacing: 0.14em;
+    cursor: default;
+    transition: all 0.2s;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+.menu-launch-btn:not(:disabled) {
+    background: rgba(0, 255, 0, 0.12);
+    border-color: #0f0;
+    color: #0f0;
+    cursor: pointer;
+}
+.menu-launch-btn:not(:disabled):hover {
+    background: #0f0;
+    color: #000;
+    box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
 }
 
+/* Preserved for rocket builder Done button */
 .menu-start-btn {
     width: 100%;
     padding: 12px;
     background: #222;
     border: 2px solid #0ff;
     color: #0ff;
-    font-size: 14px;
-    font-weight: bold;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.menu-start-btn:hover {
-    background: #0ff;
-    color: #000;
-}
-
-/* Settings Section */
-.settings-section {
-    background: rgba(0, 255, 0, 0.05);
-    border-color: #0f0;
-}
-
-.settings-section h3 {
-    color: #0f0;
-}
-
-.setting-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-}
-
-.setting-label {
-    color: #0f0;
-    font-size: 13px;
-}
-
-.toggle-buttons {
-    display: flex;
-    gap: 5px;
-}
-
-.toggle-btn {
-    padding: 8px 12px;
-    background: #222;
-    border: 1px solid #0f0;
-    color: #0f0;
-    font-size: 11px;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.toggle-btn:hover {
-    background: rgba(0, 255, 0, 0.2);
-}
-
-.toggle-btn.active {
-    background: #0f0;
-    color: #000;
-    font-weight: bold;
-}
-
-.setting-description {
-    color: #666;
-    font-size: 11px;
-    margin: 0;
-    font-style: italic;
-}
-
-/* Settings hamburger menu */
-.settings-hamburger-container {
-    margin-top: 15px;
-    border-top: 1px solid #333;
-    padding-top: 15px;
-}
-
-.settings-hamburger-btn {
-    width: 100%;
-    background: rgba(0, 255, 255, 0.1);
-    border: 1px solid #0ff;
-    color: #0ff;
-    padding: 10px 15px;
     font-family: 'Courier New', monospace;
-    font-size: 12px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    transition: background 0.2s;
-}
-
-.settings-hamburger-btn:hover {
-    background: rgba(0, 255, 255, 0.2);
-}
-
-.settings-hamburger-btn .hamburger-icon {
     font-size: 14px;
-    transition: transform 0.2s;
-}
-
-.settings-hamburger-btn.active .hamburger-icon {
-    transform: rotate(90deg);
-}
-
-.settings-content {
-    margin-top: 10px;
-    padding: 15px;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid #333;
-    border-radius: 4px;
-}
-
-/* Build your own rocket button */
-.build-rocket-btn {
-    width: 100%;
-    padding: 10px;
-    margin-bottom: 10px;
-    background: #222;
-    border: 1px solid #0ff;
-    color: #0ff;
-    font-size: 13px;
+    font-weight: bold;
     cursor: pointer;
     transition: all 0.2s;
 }
-
-.build-rocket-btn:hover {
-    background: rgba(0, 255, 255, 0.2);
-    border-color: #0f0;
-    color: #0f0;
-}
+.menu-start-btn:hover { background: #0ff; color: #000; }
 
 /* Rocket builder overlay and wrapper */
 .rocket-builder-overlay {
@@ -1128,6 +1580,26 @@ button:disabled {
         margin-bottom: 8px;
     }
 
+    .telemetry-tabs {
+        gap: 4px;
+        margin-bottom: 8px;
+    }
+
+    .telemetry-tab {
+        padding: 5px 6px;
+        font-size: 9px;
+    }
+
+    #telemetry-rocket-canvas {
+        max-width: 180px;
+    }
+
+    .structural-panel--floating {
+        width: min(280px, calc(100vw - 20px));
+        max-height: 70vh;
+        font-size: 11px;
+    }
+
     .section {
         margin: 8px 0;
         padding: 5px 0;
@@ -1358,50 +1830,30 @@ button:disabled {
         width: 100%;
         max-width: 100vw;
         padding: 15px;
+        gap: 18px;
         -webkit-overflow-scrolling: touch;
         overflow-y: auto;
     }
 
-    .menu-header h2 {
-        font-size: 20px;
-    }
-
-    .menu-section {
-        padding: 12px;
-        margin-bottom: 20px;
-    }
-
-    .menu-section h3 {
-        font-size: 16px;
-    }
-
-    .menu-description {
-        font-size: 11px;
-    }
+    .menu-header h2 { font-size: 17px; }
+    .menu-mode-card { padding: 12px 10px; }
+    .menu-mode-card-label { font-size: 12px; }
 
     .menu-input-group input {
         padding: 10px;
-        font-size: 16px; /* Prevents zoom on iOS */
+        font-size: 16px;
         min-height: 44px;
     }
 
-    .preset-btn {
-        padding: 10px;
-        font-size: 11px;
-        min-height: 44px;
-    }
+    .preset-btn { padding: 10px 4px; min-height: 44px; }
 
-    .menu-start-btn {
-        padding: 14px;
-        font-size: 14px;
-        min-height: 50px;
-    }
+    .menu-srow { padding: 13px 0; }
+    .menu-srow-key, .menu-srow-val { font-size: 12px; }
+    .menu-build-inline-btn { padding: 10px 14px; min-height: 40px; font-size: 12px; }
 
-    .menu-close {
-        width: 44px;
-        height: 44px;
-        font-size: 32px;
-    }
+    .menu-launch-btn { padding: 17px; font-size: 14px; min-height: 54px; }
+    .menu-start-btn { padding: 14px; font-size: 14px; min-height: 50px; }
+    .menu-close { width: 44px; height: 44px; font-size: 28px; }
 }
 
 /* Very small phones */

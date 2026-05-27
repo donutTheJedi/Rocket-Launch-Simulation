@@ -9,6 +9,27 @@ import { predictOrbit } from './orbital.js';
 let absoluteBurnStartTime = null; // For circularization burn
 let absoluteRetrogradeBurnStartTime = null; // For retrograde burn
 
+function syncEventsPanelMode() {
+    const eventsPanel = document.getElementById('events');
+    const collapseBtn = document.getElementById('events-collapse-btn');
+    if (!eventsPanel || !collapseBtn) return;
+
+    eventsPanel.classList.toggle('events-collapsed', !!state.eventsCollapsed);
+    collapseBtn.textContent = state.eventsCollapsed ? '+' : '_';
+    collapseBtn.title = state.eventsCollapsed ? 'Expand mission events' : 'Minimize mission events';
+}
+
+export function initEventsPanel() {
+    const collapseBtn = document.getElementById('events-collapse-btn');
+    if (!collapseBtn) return;
+
+    syncEventsPanelMode();
+    collapseBtn.addEventListener('click', () => {
+        state.eventsCollapsed = !state.eventsCollapsed;
+        syncEventsPanelMode();
+    });
+}
+
 // Format time as MM:SS.ms
 export function formatTime(seconds) {
     const mins = Math.floor(seconds / 60);
@@ -278,10 +299,12 @@ export function addEvent(text) {
     const timeStr = formatTime(state.time);
     state.events.push({ time: timeStr, text });
     const eventList = document.getElementById('event-list');
+    if (!eventList) return;
     const eventDiv = document.createElement('div');
     eventDiv.className = 'event';
     eventDiv.innerHTML = `<span class="event-time">T+${timeStr}</span> ${text}`;
     eventList.insertBefore(eventDiv, eventList.firstChild);
+    syncEventsPanelMode();
 }
 
 // ============================================================================

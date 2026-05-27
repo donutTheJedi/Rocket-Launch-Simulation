@@ -486,8 +486,10 @@ Add real-time plotting during flight and comprehensive post-flight analysis.
 
 - Engine shuts off in manual control
 - When clicking in and out of UI it can bug
-- Poor phone formating
--
+- Poor phone formatting
+- Orbital controls do not appear immediately after entering Orbital mode
+- Prograde burns do not affect structural stability
+- After leaving Orbital mode and returning to Manual mode, orbital controls remain visible until launch
 
 ## 🐛 Known Limitations
 
