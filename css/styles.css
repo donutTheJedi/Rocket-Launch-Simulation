@@ -741,6 +741,84 @@ button:disabled {
     z-index: 999;
 }
 
+.failure-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.75);
+}
+
+.failure-dialog[hidden] {
+    display: none !important;
+}
+
+.failure-dialog:not([hidden]) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.failure-dialog-card {
+    width: min(360px, 100%);
+    padding: 24px 22px 20px;
+    background: rgba(8, 12, 10, 0.98);
+    border: 2px solid rgba(255, 80, 80, 0.55);
+    border-radius: 4px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    text-align: center;
+}
+
+.failure-dialog-title {
+    color: #f88;
+    font-size: 18px;
+    letter-spacing: 0.12em;
+    margin: 0 0 12px;
+}
+
+.failure-dialog-message {
+    color: rgba(255, 200, 200, 0.85);
+    font-size: 12px;
+    line-height: 1.55;
+    margin: 0 0 20px;
+}
+
+.failure-dialog-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.failure-dialog-btn {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    font-weight: bold;
+    letter-spacing: 0.08em;
+    padding: 12px 16px;
+    cursor: pointer;
+    border-radius: 3px;
+    border: 1px solid rgba(0, 255, 255, 0.45);
+    background: rgba(0, 30, 28, 0.9);
+    color: #0ff;
+    transition: background 0.15s, color 0.15s;
+}
+
+.failure-dialog-btn:hover {
+    background: rgba(0, 255, 255, 0.12);
+    border-color: #0ff;
+}
+
+.failure-dialog-btn--primary {
+    border-color: rgba(0, 255, 0, 0.55);
+    color: #0f0;
+    background: rgba(0, 40, 20, 0.9);
+}
+
+.failure-dialog-btn--primary:hover {
+    background: #0f0;
+    color: #000;
+}
+
 #menu-panel {
     position: fixed;
     top: 0; right: 0;
@@ -882,6 +960,46 @@ button:disabled {
     opacity: 0.25;
     cursor: not-allowed;
     pointer-events: none;
+}
+
+.menu-mode-card--challenge {
+    background: rgba(40, 8, 8, 0.85);
+    border-color: rgba(220, 70, 70, 0.45);
+    color: #f88;
+}
+.menu-mode-card--challenge:hover {
+    background: rgba(80, 20, 20, 0.5);
+    border-color: rgba(255, 100, 100, 0.7);
+}
+.menu-mode-card--challenge .menu-mode-card-label {
+    color: #faa;
+}
+.menu-mode-card--challenge .menu-mode-card-sub {
+    color: rgba(255, 160, 160, 0.65);
+}
+.menu-mode-card--challenge .mode-badge--tag {
+    border-color: rgba(255, 120, 120, 0.4);
+    color: rgba(255, 180, 180, 0.85);
+}
+
+.menu-mode-card--challenge-exit {
+    border-color: rgba(255, 140, 80, 0.55);
+    background: rgba(50, 20, 8, 0.9);
+}
+.menu-mode-card--challenge-exit:hover {
+    border-color: rgba(255, 180, 100, 0.85);
+    background: rgba(70, 30, 12, 0.85);
+}
+
+.menu-challenge-active-note {
+    font-size: 10px;
+    color: #f88;
+    padding: 8px 10px;
+    border: 1px solid rgba(220, 70, 70, 0.4);
+    border-radius: 3px;
+    background: rgba(80, 20, 20, 0.25);
+    line-height: 1.5;
+    margin-top: 8px;
 }
 
 /* Mode info box */

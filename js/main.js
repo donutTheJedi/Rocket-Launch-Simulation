@@ -14,6 +14,14 @@ import { calculateStructuralLoads, checkStructuralFailure } from './structural.j
 import { updateTelemetry } from './telemetry.js';
 import { initRenderer, resize, render } from './renderer.js';
 import { initInput } from './input.js';
+import { registerMissionFailure, initMissionFailureDialog, dismissMissionFailureDialog } from './missionFailure.js';
+import {
+    loadPersistedSettings,
+    isChallengeActive,
+    startChallengeFromMenu,
+    resetChallengeEverything,
+    confirmExitChallenge,
+} from './challenge.js';
 
 // Update physics simulation
 function update(dt) {
@@ -34,9 +42,9 @@ function update(dt) {
     const r = Math.sqrt(state.x * state.x + state.y * state.y);
     const velocity = Math.sqrt(state.vx * state.vx + state.vy * state.vy);
     
-    if (r < EARTH_RADIUS && state.time > 1) {
-        state.running = false;
+    if (r < EARTH_RADIUS && state.time > 1 && state.engineOn) {
         addEvent("MISSION FAILURE - Ground impact");
+        registerMissionFailure('impact');
         return;
     }
     
@@ -503,6 +511,7 @@ function loop(time) {
 
 // Menu functions
 function showMenu() {
+    dismissMissionFailureDialog();
     const menuPanel = document.getElementById('menu-panel');
     const menuOverlay = document.getElementById('menu-overlay');
     if (menuPanel && menuOverlay) {
@@ -518,6 +527,7 @@ function showMenu() {
         updateGuidanceModeAvailability();
         updateRocketSummary();
         syncSettingsUI();
+        updateChallengeActiveNote();
         if (wasRunning) {
             const pauseBtn = document.getElementById('pause-btn');
             if (pauseBtn) {
@@ -536,11 +546,9 @@ function hideMenu() {
             menuPanel.style.display = 'none';
             menuOverlay.style.display = 'none';
             
-            // If no mission mode is selected, default to guided mode
+            // If no mission mode is selected, default to manual (or challenge → manual)
             if (state.gameMode === null || state.gameMode === undefined) {
-                const input = document.getElementById('target-altitude-input');
-                const targetAlt = input ? parseFloat(input.value) * 1000 : 500000;
-                startMission('guided', { targetAltitude: targetAlt });
+                startMission('manual');
             }
         }, 300);
     }
@@ -594,6 +602,7 @@ function startMission(mode, options = {}) {
         resetGuidance();
         hideMenu();
     } else if (mode === 'orbital') {
+        if (isChallengeActive()) return;
         const altitude = options.altitude || 500000;
         state.gameMode = 'orbital';
         state.orbitalSpawnAltitude = altitude;
@@ -717,23 +726,119 @@ function initTopLinksPosition() {
 }
 
 function updateGuidanceModeAvailability() {
-    const guidedCard = document.querySelector('.menu-mode-card[data-mode="guided"]');
     const cubicCard = document.querySelector('.menu-mode-card[data-mode="cubic"]');
-    const note = document.getElementById('guidance-disabled-note');
     const custom = isCustomRocket();
 
-    if (guidedCard) guidedCard.classList.toggle('guidance-disabled', custom);
     if (cubicCard) cubicCard.classList.toggle('guidance-disabled', custom);
-    if (note) note.style.display = custom ? '' : 'none';
 
-    // If a disabled mode is currently selected, deselect it
     if (custom) {
         const selected = document.querySelector('.menu-mode-card.selected');
-        if (selected && (selected.dataset.mode === 'guided' || selected.dataset.mode === 'cubic')) {
+        if (selected && selected.dataset.mode === 'cubic') {
             selected.classList.remove('selected');
             document.querySelectorAll('.menu-mode-info').forEach(b => { b.style.display = 'none'; });
             const launchBtn = document.getElementById('menu-launch-btn');
             if (launchBtn) { launchBtn.disabled = true; launchBtn.textContent = 'SELECT A MODE'; }
+        }
+    }
+}
+
+function updateChallengeCardUI() {
+    const challenge = isChallengeActive();
+    const card = document.getElementById('challenge-card');
+    const label = document.getElementById('challenge-card-label');
+    const sub = document.getElementById('challenge-card-sub');
+    const badgeMain = document.getElementById('challenge-card-badge-main');
+    const badgeSub = document.getElementById('challenge-card-badge-sub');
+
+    card?.classList.toggle('menu-mode-card--challenge-exit', challenge);
+    if (label) label.textContent = challenge ? 'EXIT CHALLENGE' : 'CHALLENGE';
+    if (sub) sub.textContent = challenge ? 'Reset to defaults' : 'Extreme difficulty';
+    if (badgeMain) badgeMain.textContent = challenge ? 'EXIT' : 'HARD';
+    if (badgeSub) badgeSub.textContent = challenge ? 'Are you sure?' : 'Design & fly';
+}
+
+function exitChallengeFromMenu() {
+    if (!confirmExitChallenge()) return;
+
+    resetChallengeEverything(state.settings);
+    state.gameMode = null;
+    state.manualPitch = null;
+    state.manualGimbal = 0;
+    initState();
+    resetGuidance();
+    resetCubicGuidance();
+
+    document.querySelectorAll('.menu-mode-card.selected').forEach((c) => c.classList.remove('selected'));
+    document.querySelectorAll('.menu-mode-info').forEach((b) => { b.style.display = 'none'; });
+    const modeInfoBox = document.getElementById('mode-info-box');
+    if (modeInfoBox) modeInfoBox.style.display = 'none';
+    const menuLaunchBtn = document.getElementById('menu-launch-btn');
+    if (menuLaunchBtn) {
+        menuLaunchBtn.disabled = true;
+        menuLaunchBtn.textContent = 'SELECT A MODE';
+    }
+
+    updateRocketSummary();
+    updateGuidanceModeAvailability();
+    updateChallengeActiveNote();
+    syncSettingsUI();
+    if (window.updateControlModeUI) window.updateControlModeUI();
+    updateCurrentModeDisplay();
+    updateUIForMode();
+    updateTelemetry();
+}
+
+function preselectChallengeManualMode() {
+    state.gameMode = 'manual';
+    state.manualPitch = 90;
+    initState();
+    resetGuidance();
+
+    document.querySelectorAll('.menu-mode-card.selected').forEach((c) => c.classList.remove('selected'));
+    const manualCard = document.querySelector('.menu-mode-card[data-mode="manual"]');
+    if (manualCard) manualCard.classList.add('selected');
+
+    document.querySelectorAll('.menu-mode-info').forEach((b) => { b.style.display = 'none'; });
+    const infoBlock = document.querySelector('.menu-mode-info[data-mode="manual"]');
+    if (infoBlock) infoBlock.style.display = '';
+    const modeInfoBox = document.getElementById('mode-info-box');
+    if (modeInfoBox) modeInfoBox.style.display = '';
+
+    const menuLaunchBtn = document.getElementById('menu-launch-btn');
+    if (menuLaunchBtn) {
+        menuLaunchBtn.disabled = false;
+        menuLaunchBtn.textContent = 'LAUNCH — MANUAL CONTROL';
+    }
+
+    updateUIForMode();
+    updateCurrentModeDisplay();
+}
+
+function updateChallengeActiveNote() {
+    const challenge = isChallengeActive();
+    const note = document.getElementById('menu-challenge-active-note');
+    if (note) note.style.display = challenge ? '' : 'none';
+
+    const settingsSection = document.getElementById('menu-settings-section');
+    if (settingsSection) settingsSection.style.display = challenge ? 'none' : '';
+
+    updateChallengeCardUI();
+
+    const orbitalCard = document.querySelector('.menu-mode-card[data-mode="orbital"]');
+    if (orbitalCard) orbitalCard.classList.toggle('guidance-disabled', challenge);
+
+    if (challenge) {
+        const selected = document.querySelector('.menu-mode-card.selected');
+        if (selected && selected.dataset.mode === 'orbital') {
+            selected.classList.remove('selected');
+            document.querySelectorAll('.menu-mode-info').forEach(b => { b.style.display = 'none'; });
+            const modeInfoBox = document.getElementById('mode-info-box');
+            if (modeInfoBox) modeInfoBox.style.display = 'none';
+            const launchBtn = document.getElementById('menu-launch-btn');
+            if (launchBtn) {
+                launchBtn.disabled = true;
+                launchBtn.textContent = 'SELECT A MODE';
+            }
         }
     }
 }
@@ -749,6 +854,8 @@ function initMenu() {
     const startCubicBtn = document.getElementById('start-cubic-btn');
     const presetBtns = document.querySelectorAll('.preset-btn');
     
+    window.showMenu = showMenu;
+
     if (menuBtn) {
         menuBtn.addEventListener('click', showMenu);
     }
@@ -811,8 +918,20 @@ function initMenu() {
         orbital: 'SPAWN IN ORBIT',
     };
 
+    const challengeCard = document.getElementById('challenge-card');
+    if (challengeCard) {
+        challengeCard.addEventListener('click', () => {
+            if (isChallengeActive()) {
+                exitChallengeFromMenu();
+            } else {
+                startChallengeFromMenu();
+            }
+        });
+    }
+
     modeCards.forEach(card => {
         card.addEventListener('click', () => {
+            if (!card.dataset.mode) return;
             const mode = card.dataset.mode;
             modeCards.forEach(c => c.classList.remove('selected'));
             card.classList.add('selected');
@@ -996,15 +1115,24 @@ function init() {
     const canvas = document.getElementById('canvas');
     initRenderer(canvas);
     resize();
+    loadPersistedSettings(state.settings);
     initState();
     resetGuidance();
     initInput();
+    initMissionFailureDialog();
+    dismissMissionFailureDialog();
     initMenu();
+    if (window.updateControlModeUI) window.updateControlModeUI();
+    syncSettingsUI();
     initTopLinksPosition();
     initMobileUI();
     updateRocketSummary();
     updateGuidanceModeAvailability();
+    updateChallengeActiveNote();
     showMenu(); // Show menu on startup
+    if (isChallengeActive()) {
+        preselectChallengeManualMode();
+    }
     updateTelemetry();
     requestAnimationFrame(loop);
 }

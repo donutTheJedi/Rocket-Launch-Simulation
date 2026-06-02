@@ -148,12 +148,12 @@
                         <span class="mode-badge mode-badge--tag">W/S keys</span>
                     </div>
                 </button>
-                <button class="menu-mode-card" data-mode="guided">
-                    <div class="menu-mode-card-label">GUIDED</div>
-                    <div class="menu-mode-card-sub">Auto guidance</div>
+                <button type="button" class="menu-mode-card menu-mode-card--challenge" id="challenge-card">
+                    <div class="menu-mode-card-label" id="challenge-card-label">CHALLENGE</div>
+                    <div class="menu-mode-card-sub" id="challenge-card-sub">Extreme difficulty</div>
                     <div class="menu-mode-badges">
-                        <span class="mode-badge mode-badge--easy">EASY</span>
-                        <span class="mode-badge mode-badge--tag">Recommended</span>
+                        <span class="mode-badge mode-badge--hard" id="challenge-card-badge-main">HARD</span>
+                        <span class="mode-badge mode-badge--tag" id="challenge-card-badge-sub">Design &amp; fly</span>
                     </div>
                 </button>
                 <button class="menu-mode-card" data-mode="cubic">
@@ -173,21 +173,15 @@
                     </div>
                 </button>
             </div>
-            <div id="guidance-disabled-note" class="menu-guidance-note" style="display:none">
-                Guided modes unavailable for custom rockets — use Manual or Orbital
+            <div id="menu-challenge-active-note" class="menu-challenge-active-note" style="display:none">
+                Challenge active: Aerodynamic forces, gimbal control, and structural explosion on failure. Use Manual mode — Orbital is unavailable.
             </div>
             <!-- Mode info + config unified box -->
             <div id="mode-info-box" class="menu-mode-infobox" style="display:none">
                 <div class="menu-mode-info" data-mode="manual" style="display:none">
                     <p class="menu-mode-infotext">Use W/S keys to control pitch angle. Guidance system provides heading recommendations. High skill ceiling — full control over trajectory.</p>
                 </div>
-                <div class="menu-mode-info" data-mode="guided" style="display:none">
-                    <p class="menu-mode-infotext">Set a target altitude and let the guidance system manage the entire ascent. PID controller handles pitch program and orbit insertion.</p>
-                    <div class="menu-input-group">
-                        <label for="target-altitude-input">Target Altitude (km)</label>
-                        <input type="number" id="target-altitude-input" value="500" min="150" max="2000" step="50">
-                    </div>
-                </div>
+                <input type="number" id="target-altitude-input" value="500" min="150" max="2000" step="50" hidden aria-hidden="true">
                 <div class="menu-mode-info" data-mode="cubic" style="display:none">
                     <p class="menu-mode-infotext">A Gauss-Newton solver computes the optimal cubic thrust-angle profile to reach the target orbit. Solver output printed to console.</p>
                     <div class="menu-input-group">
@@ -253,7 +247,7 @@
         </div>
 
         <!-- ► SETTINGS -->
-        <div class="menu-sg">
+        <div class="menu-sg" id="menu-settings-section">
             <div class="menu-sg-label">► SETTINGS</div>
             <div class="menu-settings-list">
                 <div class="menu-srow menu-srow--clickable" id="settings-control-mode-row">
@@ -299,6 +293,17 @@
     </div>
     
     <div id="menu-overlay" style="display: none;"></div>
+
+    <div id="failure-dialog" class="failure-dialog" role="dialog" aria-labelledby="failure-dialog-title" aria-modal="true" hidden>
+        <div class="failure-dialog-card">
+            <h2 id="failure-dialog-title" class="failure-dialog-title">MISSION FAILURE</h2>
+            <p id="failure-dialog-message" class="failure-dialog-message">Vehicle destroyed.</p>
+            <div class="failure-dialog-actions">
+                <button type="button" id="failure-restart-btn" class="failure-dialog-btn failure-dialog-btn--primary">RESTART</button>
+                <button type="button" id="failure-alt-btn" class="failure-dialog-btn">GO TO MENU</button>
+            </div>
+        </div>
+    </div>
     
     <!-- Mobile UI Panel (slides in from left) -->
     <div id="mobile-ui-panel" class="mobile-ui-panel">

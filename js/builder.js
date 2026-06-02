@@ -1,6 +1,7 @@
 import { initRocketBuilder } from './rocketBuilder.js';
 import { updateRocketSummary } from './rocketSummary.js';
 import { initHangarTutorial } from './hangarTutorial.js';
+import { initChallengeHangar } from './challenge.js';
 
 const hangarSummary = document.getElementById('hangar-summary');
 const hamburger = document.getElementById('hangar-hamburger');
@@ -25,6 +26,8 @@ hamburger?.addEventListener('click', () => {
 
 drawerClose?.addEventListener('click', () => setDrawerOpen(false));
 backdrop?.addEventListener('click', () => setDrawerOpen(false));
+
+initChallengeHangar();
 
 initRocketBuilder({
     hangarMode: true,

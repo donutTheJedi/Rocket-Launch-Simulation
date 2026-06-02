@@ -17,7 +17,7 @@ const SEGMENT_DEFS = [
 
 const GLOBAL_PATHS = new Set(['fairingJettisonAlt', 'propellantDensity']);
 
-const ROCKET_BUILDER_SCHEMA = [
+export const ROCKET_BUILDER_SCHEMA = [
     { path: 'stages.0.dryMass', label: 'Dry mass (kg)', min: 5000, max: 50000, step: 100, tab: 'basic' },
     { path: 'stages.0.thrust', label: 'Thrust SL (N)', min: 1e6, max: 15e6, step: 100000, tab: 'basic' },
     { path: 'stages.0.thrustVac', label: 'Thrust vac (N)', min: 1e6, max: 15e6, step: 100000, tab: 'basic' },
@@ -611,6 +611,10 @@ function initHangarBuilder() {
     document.getElementById('segment-popup-tab-advanced')?.addEventListener('click', () => populateSegmentPopupContent('advanced'));
 
     document.getElementById('rocket-builder-reset-btn')?.addEventListener('click', () => {
+        import('./challenge.js').then(({ clearChallengeMode }) => {
+            clearChallengeMode();
+            document.getElementById('hangar-challenge-banner')?.setAttribute('hidden', '');
+        });
         resetToDefault();
         closeSegmentPopup();
         populateGlobalFields();

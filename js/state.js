@@ -32,6 +32,7 @@ export const state = {
     guidanceThrottle: 1.0,
     // New mode management
     gameMode: null, // null | 'manual' | 'guided' | 'orbital'
+    failureReason: null, // null | 'impact' | 'structural'
     manualPitch: null, // null | number (null = use guidance, number = manual pitch angle)
     targetAltitude: 500000, // for guided mode, default 500km
     orbitalSpawnAltitude: 500000, // for orbital mode, default 500km
@@ -127,6 +128,7 @@ export function initState() {
     state.telemetryTab = 'flight';
     state.structuralData = null;
     state.structuralFailureTime = null;
+    state.failureReason = null;
 
     // Reset rotational dynamics
     state.rocketAngle = 0;        // Start pointing straight up

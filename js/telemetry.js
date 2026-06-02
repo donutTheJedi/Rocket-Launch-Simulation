@@ -5,7 +5,7 @@ import { getAtmosphericDensity, getCurrentThrust, getAirspeed, getCurrentDragCoe
 import { formatTime, formatTMinus, getNextEvent } from './events.js';
 import { predictOrbit } from './orbital.js';
 import { drawTelemetryRocketDiagram } from './renderer.js';
-import { utilizationColor } from './structural.js';
+import { utilizationColor, getStructuralFailureGraceSeconds } from './structural.js';
 import { updateStructuralPanelVisibility } from './structuralPanel.js';
 
 // Update all telemetry displays
@@ -451,8 +451,9 @@ function updateStructuralPanel() {
         html += `</div>`;
 
         if (overYield) {
+            const grace = getStructuralFailureGraceSeconds();
             const remaining = state.settings.structuralFailureMode === 'terminate' && state.structuralFailureTime !== null
-                ? Math.max(0, 3.5 - (state.time - state.structuralFailureTime)).toFixed(1)
+                ? Math.max(0, grace - (state.time - state.structuralFailureTime)).toFixed(1)
                 : null;
             html += `<div class="structural-warn">${remaining !== null ? `BREAKUP IN ${remaining}s` : 'YIELDING'}</div>`;
         }

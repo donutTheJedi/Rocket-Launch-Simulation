@@ -6,12 +6,19 @@ import {
     getAtmosphericProperties, calculateRocketCOG, calculateFuelLevel,
     calculateNormalForceCoefficientDerivative, calculateAngleOfAttack, calculateCenterOfPressure
 } from './physics.js';
+import { registerMissionFailure } from './missionFailure.js';
+import { isChallengeActive } from './challenge.js';
 
 // Gauge ullage pressure for pump-fed LOX/RP-1 tanks (~0.5 bar gauge / 50 kPa)
 export const ULLAGE_PRESSURE = 50e3;
 
-// Grace period (seconds) before structural failure terminates flight
-const FAILURE_GRACE_SECONDS = 3.5;
+const DEFAULT_FAILURE_GRACE_SECONDS = 3.5;
+const CHALLENGE_FAILURE_GRACE_SECONDS = 1.0;
+
+/** Seconds over yield before terminate mode destroys the vehicle. */
+export function getStructuralFailureGraceSeconds() {
+    return isChallengeActive() ? CHALLENGE_FAILURE_GRACE_SECONDS : DEFAULT_FAILURE_GRACE_SECONDS;
+}
 
 // Von Mises criterion for biaxial stress state (axial + hoop + shear)
 function vonMises(sigmaAxial, sigmaHoop, tau) {
@@ -324,9 +331,9 @@ export function checkStructuralFailure(sections, addEvent) {
 
         if (state.settings.structuralFailureMode === 'terminate') {
             const elapsed = state.time - state.structuralFailureTime;
-            if (elapsed >= FAILURE_GRACE_SECONDS) {
+            if (elapsed >= getStructuralFailureGraceSeconds()) {
                 addEvent('STRUCTURAL FAILURE - VEHICLE LOST');
-                state.running = false;
+                registerMissionFailure('structural');
             }
         }
     } else {
