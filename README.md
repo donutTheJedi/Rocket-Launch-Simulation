@@ -15,7 +15,7 @@ A realistic 2D physics simulation of orbital mechanics and rocket launches from 
 
 ## 🌟 Part I think is coolest
 
-**Rocket Builder with live diagram** — In the menu, "Build your own rocket" opens a panel where you can tweak stages, payload, and fairing. The Basic tab shows an interactive 2D diagram of your rocket: drag segment boundaries to change length and edges to change diameter. COG and CoP at pad are drawn in real time, and starting acceleration turns red if it's below 1 g (so you know the rocket would crash). Its so amazing to test extreme cases and just play around with your ideas, I havent tested it but it should work with model rockets
+**Rocket Builder with live diagram** — The [Vehicle Hangar](builder.html) (`builder.html`) is a dedicated page where you can tweak stages, payload, and fairing (also linked from Mission Control as **BUILD ›**). The Basic tab shows an interactive 2D diagram of your rocket: drag segment boundaries to change length and edges to change diameter. COG and CoP at pad are drawn in real time, and starting acceleration turns red if it's below 1 g (so you know the rocket would crash). Its so amazing to test extreme cases and just play around with your ideas, I havent tested it but it should work with model rockets
 
 ## 📋 Table of Contents
 
@@ -333,7 +333,7 @@ flowchart TD
 
 ## 🛠 Rocket Customization
 
-Build and tune your own rocket before starting a mission. Open the menu, then click **Build your own rocket** (above Settings in the Manual Control section).
+Build and tune your own rocket before starting a mission. Open the **[Vehicle Hangar](builder.html)** or click **BUILD ›** in Mission Control (Rocket Config section).
 
 ### Basic Tab
 - **Stage 1 & 2**: Dry mass, propellant mass, thrust (SL/vac), diameter, length, drag coefficient
@@ -347,7 +347,7 @@ Build and tune your own rocket before starting a mission. Open the menu, then cl
 
 ### Behavior
 - **Reset to default**: Restores the Falcon 9-like configuration
-- **Done**: Closes the builder; your design applies to the **next** mission start (Manual, Guided, or Orbital)
+- **Proceed to Launch Pad**: Returns to the simulator; your design applies to the **next** mission start (Manual, Guided, or Orbital). Config is saved in the browser automatically.
 - All parameters are persisted for the session; the simulation reads from the current config when you launch or spawn
 
 ### Planned: Customizable Rocket Diagram (not yet implemented)
@@ -357,7 +357,8 @@ The diagram area in the Basic tab currently shows a simple rectangle that resize
 
 ```
 Rocket/
-├── index.html          # Main HTML file
+├── index.html          # Main simulator
+├── builder.html        # Vehicle Hangar — custom rocket builder
 ├── README.md          # This file
 ├── css/
 │   └── styles.css     # UI styling

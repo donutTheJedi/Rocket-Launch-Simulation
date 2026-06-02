@@ -71,9 +71,40 @@ function normalizeConfig(config) {
     return out;
 }
 
+const STORAGE_KEY = 'rocket-sim-config-v1';
+
+function saveToStorage() {
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            config: currentConfig,
+            customRocketActive,
+        }));
+    } catch (_) {
+        /* quota / private mode */
+    }
+}
+
+function loadFromStorage() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return false;
+        const data = JSON.parse(raw);
+        if (!data?.config?.stages || !Array.isArray(data.config.stages) || data.config.stages.length < 2) {
+            return false;
+        }
+        if (!data.config.payload || !data.config.fairing) return false;
+        currentConfig = normalizeConfig(data.config);
+        customRocketActive = Boolean(data.customRocketActive);
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
 // Mutable current config (deep clone of default on init)
 let currentConfig = normalizeConfig(DEFAULT_ROCKET_CONFIG);
 let customRocketActive = false;
+loadFromStorage();
 
 /**
  * Get the current rocket config (used by simulation).
@@ -94,6 +125,7 @@ export function setRocketConfig(config) {
     if (!config.payload || !config.fairing) return;
     currentConfig = normalizeConfig(config);
     customRocketActive = true;
+    saveToStorage();
 }
 
 /**
@@ -110,6 +142,7 @@ export function getDefaultRocketConfig() {
 export function resetToDefault() {
     currentConfig = normalizeConfig(getDefaultRocketConfig());
     customRocketActive = false;
+    saveToStorage();
 }
 
 export function isCustomRocket() {

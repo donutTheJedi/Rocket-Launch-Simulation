@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Design a custom two-stage rocket in the Vehicle Hangar. Tune stages, payload, fairing, thrust, and mass—then fly your design in the launch trajectory simulator.">
+    <title>Custom Rocket Builder | Vehicle Hangar</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/hangar.css">
+</head>
+<body class="hangar-page">
+    <aside id="hangar-summary" class="hangar-stats-panel" aria-label="Vehicle statistics">
+        <div class="hangar-rocket-name">
+            <span class="hangar-rocket-icon" aria-hidden="true">▲</span>
+            <span id="hangar-rocket-title">FALCON-9 MK1</span>
+        </div>
+        <div class="hangar-rocket-meta" id="hangar-rocket-meta">2 STAGES · KEROLOX</div>
+
+        <div class="hangar-metrics-block">
+            <p class="hangar-metrics-label">DIMENSIONS &amp; MASS</p>
+            <div class="hangar-metric-row">
+                <span class="hangar-metric-key">Total mass</span>
+                <span class="hangar-metric-val" id="hangar-stat-totalmass">—</span>
+            </div>
+            <div class="hangar-metric-row">
+                <span class="hangar-metric-key">Height</span>
+                <span class="hangar-metric-val" id="hangar-stat-height">—</span>
+            </div>
+            <div class="hangar-metric-row">
+                <span class="hangar-metric-key">Max width</span>
+                <span class="hangar-metric-val" id="hangar-stat-width">—</span>
+            </div>
+        </div>
+
+        <div class="hangar-metrics-block">
+            <p class="hangar-metrics-label">THRUST (SEA LEVEL)</p>
+            <div class="hangar-metric-row">
+                <span class="hangar-metric-key">Stage 1</span>
+                <span class="hangar-metric-val" id="hangar-stat-thrust-s1">—</span>
+            </div>
+            <div class="hangar-metric-row">
+                <span class="hangar-metric-key">Stage 2</span>
+                <span class="hangar-metric-val" id="hangar-stat-thrust-s2">—</span>
+            </div>
+        </div>
+
+        <div class="hangar-rocket-stats">
+            <div class="hangar-rocket-stat">
+                <div class="hangar-rocket-stat-val" id="hangar-stat-drymass">—</div>
+                <div class="hangar-rocket-stat-label">DRY MASS</div>
+            </div>
+            <div class="hangar-rocket-stat">
+                <div class="hangar-rocket-stat-val" id="hangar-stat-twr">—</div>
+                <div class="hangar-rocket-stat-label">TWR</div>
+            </div>
+            <div class="hangar-rocket-stat">
+                <div class="hangar-rocket-stat-val" id="hangar-stat-isp">—</div>
+                <div class="hangar-rocket-stat-label">VAC ISP</div>
+            </div>
+        </div>
+        <div class="hangar-readiness">
+            <div class="hangar-readiness-header">
+                <span>LAUNCH READINESS</span>
+                <span id="hangar-readiness-label">—</span>
+            </div>
+            <div class="hangar-readiness-bg">
+                <div class="hangar-readiness-fill" id="hangar-readiness-fill" style="width:0%"></div>
+            </div>
+        </div>
+        <div id="hangar-advisory" class="hangar-advisory" style="display:none">
+            <span class="hangar-advisory-icon" aria-hidden="true">⚠</span>
+            <span id="hangar-advisory-text"></span>
+        </div>
+    </aside>
+
+    <button type="button" id="hangar-hamburger" class="hangar-hamburger" aria-label="Open settings menu" aria-expanded="false">
+        <span></span>
+        <span></span>
+        <span></span>
+    </button>
+
+    <aside id="hangar-menu-drawer" class="hangar-menu-drawer" aria-label="Hangar settings">
+        <div class="hangar-drawer-header">
+            <span class="hangar-drawer-title">SETTINGS</span>
+            <button type="button" id="hangar-drawer-close" class="hangar-drawer-close" aria-label="Close">×</button>
+        </div>
+        <div class="hangar-drawer-body">
+            <div class="hangar-global-block">
+                <p class="hangar-global-label">GLOBAL</p>
+                <div id="hangar-global-fields"></div>
+            </div>
+            <div class="hangar-drawer-actions">
+                <button type="button" id="rocket-builder-reset-btn" class="hangar-reset-btn">Reset to default</button>
+                <a href="index.html" id="hangar-launch-btn" class="hangar-launch-btn">Proceed to Launch Pad</a>
+            </div>
+        </div>
+    </aside>
+
+    <div id="hangar-backdrop" class="hangar-backdrop" hidden></div>
+
+    <a href="index.html" class="hangar-launch-pad-link" title="Back to simulator">Launch Pad</a>
+
+    <aside id="hangar-segment-drawers" class="hangar-segment-drawers" aria-label="Section quick edit">
+        <p class="hangar-segment-drawers-title">SECTIONS</p>
+        <p class="hangar-segment-drawers-hint">Quick numbers · click rocket for full editor</p>
+        <details class="hangar-segment-drawer" data-segment-index="0">
+            <summary>Stage 1</summary>
+            <div class="hangar-segment-drawer-inner">
+                <div id="hangar-drawer-body-0" class="hangar-segment-drawer-body"></div>
+                <button type="button" class="hangar-drawer-more-btn" data-segment-index="0">Advanced settings ›</button>
+            </div>
+        </details>
+        <details class="hangar-segment-drawer" data-segment-index="1">
+            <summary>Stage 2</summary>
+            <div class="hangar-segment-drawer-inner">
+                <div id="hangar-drawer-body-1" class="hangar-segment-drawer-body"></div>
+                <button type="button" class="hangar-drawer-more-btn" data-segment-index="1">Advanced settings ›</button>
+            </div>
+        </details>
+        <details class="hangar-segment-drawer" data-segment-index="2">
+            <summary>Payload</summary>
+            <div class="hangar-segment-drawer-inner">
+                <div id="hangar-drawer-body-2" class="hangar-segment-drawer-body"></div>
+                <button type="button" class="hangar-drawer-more-btn" data-segment-index="2">Advanced settings ›</button>
+            </div>
+        </details>
+        <details class="hangar-segment-drawer" data-segment-index="3">
+            <summary>Fairing</summary>
+            <div class="hangar-segment-drawer-inner">
+                <div id="hangar-drawer-body-3" class="hangar-segment-drawer-body"></div>
+                <button type="button" class="hangar-drawer-more-btn" data-segment-index="3">Advanced settings ›</button>
+            </div>
+        </details>
+    </aside>
+
+    <main class="hangar-stage" aria-label="Rocket in hangar">
+        <p class="hangar-hint">Click rocket or use section drawers · drag edges for size</p>
+        <div id="hangar-canvas-wrap" class="hangar-canvas-wrap">
+            <canvas id="rocket-builder-canvas" class="rocket-builder-diagram-canvas"></canvas>
+        </div>
+    </main>
+
+    <div id="segment-popup" class="segment-popup" role="dialog" aria-modal="true" hidden>
+        <div class="segment-popup-header">
+            <h2 id="segment-popup-title" class="segment-popup-title">Stage 1</h2>
+            <button type="button" id="segment-popup-close" class="segment-popup-close" aria-label="Close">×</button>
+        </div>
+        <div class="segment-popup-tabs">
+            <button type="button" id="segment-popup-tab-basic" class="segment-popup-tab active">Basic</button>
+            <button type="button" id="segment-popup-tab-advanced" class="segment-popup-tab">Advanced</button>
+        </div>
+        <div id="segment-popup-content" class="segment-popup-content"></div>
+    </div>
+
+    <div id="hangar-tutorial" class="hangar-tutorial" role="dialog" aria-labelledby="hangar-tutorial-title" aria-modal="true" hidden>
+        <div class="hangar-tutorial-scrim" aria-hidden="true"></div>
+        <div id="hangar-tutorial-spotlight" class="hangar-tutorial-spotlight" aria-hidden="true"></div>
+        <div id="hangar-tutorial-card" class="hangar-tutorial-card">
+            <p id="hangar-tutorial-step" class="hangar-tutorial-step">1 / 3</p>
+            <h2 id="hangar-tutorial-title" class="hangar-tutorial-title">Edit your rocket</h2>
+            <p id="hangar-tutorial-text" class="hangar-tutorial-text"></p>
+            <div class="hangar-tutorial-actions">
+                <button type="button" id="hangar-tutorial-skip" class="hangar-tutorial-skip">Skip tour</button>
+                <button type="button" id="hangar-tutorial-next" class="hangar-tutorial-next">Next</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/builder.js"></script>
+</body>
+</html>

@@ -1,0 +1,873 @@
+/* Vehicle Hangar — rocket-only stage + stats drawer */
+
+body.hangar-page {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    display: block;
+    background: #050508;
+    background-image:
+        radial-gradient(ellipse 100% 60% at 50% 100%, rgba(255, 136, 0, 0.06) 0%, transparent 50%),
+        radial-gradient(ellipse 80% 50% at 50% 30%, rgba(0, 80, 60, 0.1) 0%, transparent 55%),
+        linear-gradient(180deg, #0a0a0c 0%, #050508 100%);
+    font-family: 'Courier New', monospace;
+    color: #ccc;
+    overflow: hidden;
+    min-height: 100vh;
+    height: 100vh;
+    margin: 0;
+    position: relative;
+}
+
+body.hangar-page::after {
+    content: '';
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 100px;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 10px,
+        rgba(255, 136, 0, 0.07) 10px,
+        rgba(255, 136, 0, 0.07) 11px
+    );
+    mask-image: linear-gradient(to top, black 40%, transparent);
+    z-index: 0;
+}
+
+/* Vehicle stats — always visible, top left */
+.hangar-stats-panel {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 1000;
+    width: min(320px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 14px 16px;
+    background: rgba(6, 8, 10, 0.92);
+    border: 1px solid rgba(255, 136, 0, 0.35);
+    border-radius: 6px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+    pointer-events: auto;
+}
+
+/* Hamburger — settings menu */
+.hangar-hamburger {
+    position: fixed;
+    bottom: 24px;
+    left: 16px;
+    z-index: 1100;
+    width: 44px;
+    height: 44px;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.75);
+    border: 1px solid rgba(255, 136, 0, 0.5);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.hangar-hamburger span {
+    display: block;
+    height: 2px;
+    background: #f80;
+    border-radius: 1px;
+    transition: transform 0.2s, opacity 0.2s;
+}
+
+.hangar-hamburger:hover,
+.hangar-hamburger.active {
+    border-color: #0ff;
+    background: rgba(0, 255, 255, 0.08);
+}
+
+.hangar-hamburger.active span:nth-child(1) {
+    transform: translateY(7px) rotate(45deg);
+}
+
+.hangar-hamburger.active span:nth-child(2) {
+    opacity: 0;
+}
+
+.hangar-hamburger.active span:nth-child(3) {
+    transform: translateY(-7px) rotate(-45deg);
+}
+
+/* Settings drawer (global + actions) */
+.hangar-menu-drawer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1050;
+    width: min(300px, 88vw);
+    height: 100%;
+    background: rgba(6, 8, 10, 0.97);
+    border-right: 2px solid rgba(0, 255, 255, 0.35);
+    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.6);
+    transform: translateX(-100%);
+    transition: transform 0.28s ease;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.hangar-menu-drawer.open {
+    transform: translateX(0);
+}
+
+.hangar-drawer-header {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 16px 12px;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+}
+
+.hangar-drawer-title {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    color: #f80;
+}
+
+.hangar-drawer-close {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 4px;
+}
+
+.hangar-drawer-close:hover {
+    color: #0ff;
+}
+
+.hangar-drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    -webkit-overflow-scrolling: touch;
+}
+
+.hangar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1040;
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.hangar-backdrop[hidden] {
+    display: none;
+}
+
+.hangar-rocket-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #0f0;
+    font-size: 15px;
+    font-weight: bold;
+    letter-spacing: 0.06em;
+}
+
+.hangar-rocket-icon {
+    color: #f80;
+}
+
+.hangar-rocket-meta {
+    font-size: 11px;
+    color: rgba(0, 255, 150, 0.5);
+    margin: 6px 0 12px;
+    letter-spacing: 0.1em;
+}
+
+.hangar-metrics-block {
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255, 136, 0, 0.12);
+}
+
+.hangar-metrics-label {
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    color: #f80;
+    margin-bottom: 8px;
+}
+
+.hangar-metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 5px;
+    font-size: 11px;
+}
+
+.hangar-metric-row:last-child {
+    margin-bottom: 0;
+}
+
+.hangar-metric-key {
+    color: rgba(0, 255, 150, 0.45);
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+}
+
+.hangar-metric-val {
+    color: #0f0;
+    font-weight: bold;
+    text-align: right;
+    letter-spacing: 0.02em;
+}
+
+.hangar-rocket-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    padding: 12px 0;
+    border-top: 1px solid rgba(255, 136, 0, 0.15);
+    border-bottom: 1px solid rgba(255, 136, 0, 0.15);
+}
+
+.hangar-rocket-stat {
+    text-align: center;
+}
+
+.hangar-rocket-stat-val {
+    color: #0f0;
+    font-size: 16px;
+    font-weight: bold;
+}
+
+.hangar-rocket-stat-label {
+    font-size: 9px;
+    color: rgba(0, 255, 150, 0.45);
+    letter-spacing: 0.1em;
+    margin-top: 4px;
+}
+
+.hangar-readiness {
+    margin-top: 14px;
+}
+
+.hangar-readiness-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: rgba(0, 255, 150, 0.5);
+    margin-bottom: 6px;
+}
+
+.hangar-readiness-bg {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.hangar-readiness-fill {
+    height: 100%;
+    transition: width 0.2s, background 0.2s;
+}
+
+.hangar-advisory {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 8px;
+    background: rgba(255, 136, 0, 0.08);
+    border: 1px solid rgba(255, 136, 0, 0.3);
+    font-size: 11px;
+    color: #fa0;
+}
+
+.hangar-global-block {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+}
+
+.hangar-global-label {
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: #f80;
+    margin-bottom: 10px;
+}
+
+#hangar-global-fields .rocket-builder-row label {
+    flex: 0 0 120px;
+    font-size: 10px;
+}
+
+.hangar-drawer-actions {
+    margin-top: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.hangar-reset-btn {
+    padding: 10px;
+    background: transparent;
+    border: 1px solid #f80;
+    color: #f80;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    letter-spacing: 0.06em;
+}
+
+.hangar-reset-btn:hover {
+    background: #f80;
+    color: #000;
+}
+
+.hangar-launch-btn {
+    display: block;
+    padding: 12px;
+    text-align: center;
+    text-decoration: none;
+    background: rgba(0, 255, 0, 0.1);
+    border: 2px solid #0f0;
+    color: #0f0;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 0.1em;
+}
+
+.hangar-launch-btn:hover {
+    background: #0f0;
+    color: #000;
+}
+
+/* Launch pad link — top right */
+.hangar-launch-pad-link {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 1000;
+    padding: 10px 14px;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: #f80;
+    text-decoration: none;
+    border: 1px solid rgba(255, 136, 0, 0.4);
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 3px;
+}
+
+.hangar-launch-pad-link:hover {
+    border-color: #f80;
+    color: #fa0;
+}
+
+/* Section quick-edit drawers — right rail */
+.hangar-segment-drawers {
+    position: fixed;
+    top: 56px;
+    right: 12px;
+    z-index: 900;
+    width: min(200px, calc(100vw - 24px));
+    max-height: calc(100vh - 72px);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px;
+    background: rgba(6, 8, 10, 0.88);
+    border: 1px solid rgba(0, 255, 255, 0.2);
+    border-radius: 6px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    -webkit-overflow-scrolling: touch;
+}
+
+.hangar-segment-drawers-title {
+    margin: 0 0 2px;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    color: rgba(0, 255, 255, 0.55);
+}
+
+.hangar-segment-drawers-hint {
+    margin: 0 0 6px;
+    font-size: 9px;
+    line-height: 1.35;
+    color: rgba(0, 255, 150, 0.35);
+}
+
+.hangar-segment-drawer {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.35);
+}
+
+.hangar-segment-drawer[open],
+.hangar-segment-drawer--active {
+    border-color: rgba(0, 255, 255, 0.45);
+    background: rgba(0, 255, 255, 0.05);
+}
+
+.hangar-segment-drawer summary {
+    padding: 7px 10px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: #ccc;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+}
+
+.hangar-segment-drawer summary::-webkit-details-marker {
+    display: none;
+}
+
+.hangar-segment-drawer summary::before {
+    content: '▸ ';
+    color: rgba(0, 255, 255, 0.5);
+    font-size: 10px;
+}
+
+.hangar-segment-drawer[open] summary::before {
+    content: '▾ ';
+}
+
+.hangar-segment-drawer summary:hover {
+    color: #0ff;
+}
+
+.hangar-segment-drawer-inner {
+    padding: 0 8px 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.hangar-segment-drawer-body {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.hangar-drawer-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 8px;
+}
+
+.hangar-drawer-row:last-child {
+    margin-bottom: 0;
+}
+
+.hangar-drawer-row label {
+    font-size: 9px;
+    color: rgba(170, 170, 170, 0.9);
+    letter-spacing: 0.04em;
+}
+
+.hangar-drawer-row input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 4px 6px;
+    font-size: 11px;
+    font-family: inherit;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid #333;
+    color: #0f0;
+}
+
+.hangar-drawer-row input:disabled {
+    color: #888;
+    opacity: 0.85;
+}
+
+.hangar-drawer-row .rocket-builder-value {
+    display: none;
+}
+
+.hangar-drawer-more-btn {
+    display: block;
+    width: 100%;
+    margin-top: 8px;
+    padding: 6px 8px;
+    background: transparent;
+    border: 1px solid rgba(0, 255, 255, 0.35);
+    color: rgba(0, 255, 255, 0.85);
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    text-align: left;
+    border-radius: 3px;
+}
+
+.hangar-drawer-more-btn:hover {
+    background: rgba(0, 255, 255, 0.1);
+    color: #0ff;
+}
+
+/* Full-screen rocket stage */
+.hangar-stage {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 70px 24px 40px;
+}
+
+.hangar-hint {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: rgba(0, 255, 150, 0.35);
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+.hangar-canvas-wrap {
+    width: min(92vw, 480px);
+    height: min(calc(100vh - 130px), 82vh);
+    min-height: 300px;
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow:
+        0 0 60px rgba(0, 255, 200, 0.06),
+        0 24px 48px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(0, 255, 255, 0.12);
+}
+
+body.hangar-page #rocket-builder-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    background: #06080a;
+    border: none;
+    border-radius: 0;
+    cursor: default;
+    touch-action: none;
+}
+
+/* Segment edit popup */
+.segment-popup {
+    position: fixed;
+    z-index: 1200;
+    width: min(300px, calc(100vw - 24px));
+    max-height: min(420px, calc(100vh - 24px));
+    background: rgba(10, 12, 14, 0.98);
+    border: 2px solid #0ff;
+    border-radius: 6px;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7), 0 0 20px rgba(0, 255, 255, 0.15);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.segment-popup[hidden] {
+    display: none;
+}
+
+.segment-popup-header {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.3);
+    background: rgba(0, 255, 255, 0.05);
+}
+
+.segment-popup-title {
+    margin: 0;
+    font-size: 14px;
+    color: #0ff;
+    letter-spacing: 0.1em;
+}
+
+.segment-popup-close {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 22px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 2px;
+}
+
+.segment-popup-close:hover {
+    color: #0ff;
+}
+
+.segment-popup-tabs {
+    flex-shrink: 0;
+    display: flex;
+    border-bottom: 1px solid #333;
+}
+
+.segment-popup-tab {
+    flex: 1;
+    padding: 8px;
+    background: #1a1a1a;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #888;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.segment-popup-tab:hover {
+    color: #0ff;
+}
+
+.segment-popup-tab.active {
+    color: #0ff;
+    border-bottom-color: #0ff;
+    background: rgba(0, 255, 255, 0.06);
+}
+
+.segment-popup-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 14px;
+    -webkit-overflow-scrolling: touch;
+}
+
+.segment-popup-content .rocket-builder-row {
+    flex-wrap: wrap;
+}
+
+.segment-popup-content .rocket-builder-row label {
+    flex: 0 0 100%;
+    margin-bottom: 2px;
+    color: #aaa;
+    font-size: 10px;
+}
+
+.segment-popup-content .rocket-builder-row input {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Allow text input in hangar */
+body.hangar-page input,
+body.hangar-page textarea {
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+a.menu-build-inline-btn {
+    text-decoration: none;
+    display: inline-block;
+}
+
+/* First-visit builder tour */
+.hangar-tutorial {
+    position: fixed;
+    inset: 0;
+    z-index: 2500;
+    pointer-events: none;
+}
+
+.hangar-tutorial[hidden] {
+    display: none !important;
+}
+
+body.hangar-tutorial-active {
+    overflow: hidden;
+}
+
+.hangar-tutorial-scrim {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.72);
+    pointer-events: auto;
+}
+
+.hangar-tutorial-spotlight {
+    position: fixed;
+    display: none;
+    border: 2px solid #0ff;
+    border-radius: 8px;
+    box-shadow:
+        0 0 0 2px rgba(0, 255, 255, 0.25),
+        0 0 24px rgba(0, 255, 255, 0.35);
+    pointer-events: none;
+    z-index: 2501;
+    transition: top 0.2s ease, left 0.2s ease, width 0.2s ease, height 0.2s ease;
+}
+
+.hangar-tutorial-card {
+    position: fixed;
+    z-index: 2502;
+    pointer-events: auto;
+    padding: 16px 18px;
+    background: rgba(8, 12, 16, 0.98);
+    border: 2px solid rgba(0, 255, 255, 0.45);
+    border-radius: 8px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.65);
+    max-width: min(320px, calc(100vw - 32px));
+}
+
+.hangar-tutorial-step {
+    margin: 0 0 6px;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    color: rgba(255, 136, 0, 0.85);
+}
+
+.hangar-tutorial-title {
+    margin: 0 0 8px;
+    font-size: 15px;
+    font-weight: normal;
+    letter-spacing: 0.08em;
+    color: #0ff;
+}
+
+.hangar-tutorial-text {
+    margin: 0 0 14px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: rgba(220, 230, 235, 0.92);
+}
+
+.hangar-tutorial-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+.hangar-tutorial-skip {
+    padding: 8px 10px;
+    background: transparent;
+    border: none;
+    color: rgba(170, 180, 190, 0.8);
+    font-family: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+}
+
+.hangar-tutorial-skip:hover {
+    color: #ccc;
+}
+
+.hangar-tutorial-next {
+    padding: 8px 18px;
+    background: rgba(0, 255, 255, 0.12);
+    border: 1px solid #0ff;
+    color: #0ff;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.hangar-tutorial-next:hover {
+    background: rgba(0, 255, 255, 0.22);
+}
+
+body.hangar-tutorial-active #hangar-hamburger.hangar-tutorial-pulse,
+body.hangar-tutorial-active .hangar-launch-btn.hangar-tutorial-pulse {
+    animation: hangar-tutorial-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes hangar-tutorial-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(0, 255, 255, 0.5); }
+    50% { box-shadow: 0 0 0 8px rgba(0, 255, 255, 0); }
+}
+
+@media screen and (max-width: 768px) {
+    .hangar-stats-panel {
+        top: 12px;
+        left: 12px;
+        right: 12px;
+        width: auto;
+        max-width: none;
+    }
+
+    .hangar-hamburger {
+        bottom: 16px;
+        left: 12px;
+    }
+
+    .hangar-stage {
+        padding-top: 280px;
+    }
+
+    .hangar-canvas-wrap {
+        max-width: 100%;
+        height: min(calc(100vh - 220px), 70vh);
+    }
+
+    .segment-popup {
+        left: 12px !important;
+        right: 12px;
+        width: auto;
+        max-width: none;
+    }
+
+    .hangar-hint {
+        font-size: 10px;
+        white-space: normal;
+        text-align: center;
+        max-width: 90%;
+    }
+
+    .hangar-launch-pad-link {
+        top: 12px;
+        right: 12px;
+        padding: 8px 10px;
+        font-size: 10px;
+    }
+
+    .hangar-segment-drawers {
+        top: auto;
+        right: 8px;
+        left: 8px;
+        bottom: 56px;
+        width: auto;
+        max-height: 38vh;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-content: flex-start;
+        gap: 6px;
+        padding: 6px;
+    }
+
+    .hangar-segment-drawers-title,
+    .hangar-segment-drawers-hint {
+        flex: 0 0 100%;
+    }
+
+    .hangar-segment-drawer {
+        flex: 1 1 calc(50% - 4px);
+        min-width: 140px;
+    }
+
+    .hangar-segment-drawer-body {
+        max-height: 120px;
+    }
+}
