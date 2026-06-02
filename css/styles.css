@@ -76,6 +76,29 @@ body {
     height: 20px;
 }
 
+/* Allow text labels (e.g. "Learn") to fit without clipping. */
+#top-links #docs-link,
+#top-links #hangar-link {
+    width: auto;
+    min-width: 72px;
+    height: auto;
+    min-height: 32px;
+    padding: 6px 12px;
+    font-size: 14px;
+    line-height: 1;
+    letter-spacing: 0.02em;
+}
+
+#top-links #hangar-link {
+    border-color: rgba(255, 136, 0, 0.5);
+    color: #f80;
+}
+
+#top-links #hangar-link:hover {
+    border-color: #f80;
+    color: #fa0;
+}
+
 /* Mobile Hamburger Menu */
 .mobile-hamburger {
     display: none;
@@ -1159,78 +1182,16 @@ button:disabled {
 }
 .menu-start-btn:hover { background: #0ff; color: #000; }
 
-/* Rocket builder overlay and wrapper */
-.rocket-builder-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.7);
-    z-index: 9998;
-    opacity: 0;
-    transition: opacity 0.3s;
-}
-
-.rocket-builder-overlay.show {
-    opacity: 1;
-}
-
-.rocket-builder-wrapper {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%) scale(0.95);
-    z-index: 9999;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 15px;
-    max-height: 90vh;
-    opacity: 0;
-    transition: opacity 0.3s, transform 0.3s;
-}
-
-.rocket-builder-wrapper.show {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-}
-
+/* Rocket builder (hangar page — see hangar.css for layout) */
 .rocket-builder-panel {
-    width: min(95vw, 900px);
-    height: 70vh;
-    max-height: 70vh;
-    background: #111;
-    border: 2px solid #0ff;
-    border-radius: 8px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    flex-shrink: 0;
     box-sizing: border-box;
 }
 
-.rocket-builder-header {
-    flex-shrink: 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 15px;
-    border-bottom: 1px solid #0ff;
-}
-
-.rocket-builder-header h2 {
-    margin: 0;
-    color: #0ff;
-    font-size: 18px;
-}
-
-.rocket-builder-note {
-    flex-shrink: 0;
-    padding: 8px 15px;
-    margin: 0;
-    font-size: 11px;
-    color: #888;
-}
-
 .rocket-builder-tabs {
+    padding-top: 12px;
     flex-shrink: 0;
     display: flex;
     gap: 0;
@@ -1439,17 +1400,6 @@ button:disabled {
     flex: 0 0 52px;
     font-size: 11px;
     color: #888;
-}
-
-/* Done button outside the box */
-.rocket-builder-footer {
-    flex-shrink: 0;
-    padding: 0;
-}
-
-.rocket-builder-footer .menu-start-btn {
-    margin: 0;
-    min-width: 120px;
 }
 
 /* Manual Pitch Controls */
@@ -1661,6 +1611,16 @@ button:disabled {
     .mobile-ui-panel #top-links .top-link {
         width: 32px;
         height: 32px;
+    }
+
+    .mobile-ui-panel #top-links #docs-link {
+        width: auto;
+        min-width: 72px;
+        height: auto;
+        min-height: 32px;
+        padding: 6px 10px;
+        font-size: 14px;
+        line-height: 1;
     }
 
     .mobile-ui-panel #top-links .top-link svg {

@@ -17,6 +17,7 @@
     </button>
     
     <div id="top-links">
+        <a href="builder.html" id="hangar-link" class="top-link top-link--label" title="Vehicle Hangar — custom rocket builder">Hangar</a>
         <a href="about.html" id="docs-link" class="top-link" title="How it works &amp; documentation">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
         </a>
@@ -219,7 +220,7 @@
                         </div>
                         <div class="menu-rocket-meta" id="menu-rocket-meta">2 STAGES · KEROLOX</div>
                     </div>
-                    <button id="build-rocket-btn" class="menu-build-inline-btn">BUILD ›</button>
+                    <a href="builder.html" id="build-rocket-btn" class="menu-build-inline-btn">BUILD ›</a>
                 </div>
                 <div class="menu-rocket-stats">
                     <div class="menu-rocket-stat">
@@ -298,29 +299,6 @@
     </div>
     
     <div id="menu-overlay" style="display: none;"></div>
-    
-    <!-- Rocket builder (overlay + wrapper: box + Done outside) -->
-    <div id="rocket-builder-overlay" class="rocket-builder-overlay" style="display: none;"></div>
-    <div id="rocket-builder-wrapper" class="rocket-builder-wrapper" style="display: none;">
-        <div id="rocket-builder-panel" class="rocket-builder-panel">
-            <div class="rocket-builder-header">
-                <h2>Rocket Builder</h2>
-                <button id="rocket-builder-close-btn" class="menu-close" aria-label="Close">×</button>
-            </div>
-            <p class="rocket-builder-note">Rocket design applies to the next mission start.</p>
-            <div class="rocket-builder-tabs">
-                <button id="rocket-builder-tab-basic" class="rocket-builder-tab active">Basic</button>
-                <button id="rocket-builder-tab-advanced" class="rocket-builder-tab">Advanced</button>
-            </div>
-            <div class="rocket-builder-actions">
-                <button id="rocket-builder-reset-btn" class="rocket-builder-reset-btn">Reset to default</button>
-            </div>
-            <div id="rocket-builder-content" class="rocket-builder-content"></div>
-        </div>
-        <div class="rocket-builder-footer">
-            <button id="rocket-builder-done-btn" class="menu-start-btn">Done</button>
-        </div>
-    </div>
     
     <!-- Mobile UI Panel (slides in from left) -->
     <div id="mobile-ui-panel" class="mobile-ui-panel">

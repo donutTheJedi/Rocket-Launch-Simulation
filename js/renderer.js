@@ -4,6 +4,11 @@ import { state, getAltitude } from './state.js';
 import { computeGuidance } from './guidance.js';
 import { calculateRocketCOG, calculateCenterOfPressure, getMachNumber, getAirspeed } from './physics.js';
 import { utilizationColorRgba } from './structural.js';
+import {
+    getFlightRocketLength,
+    computeVisibilityScale,
+    drawFlightRocket,
+} from './rocketVisual.js';
 
 // Canvas and context (set by init)
 let canvas = null;
@@ -252,10 +257,17 @@ export function render() {
     
     ctx.restore(); // End Earth rotation
     
-    // Rocket - ACTUAL SIZE 70m x 3.7m
-    const rocketLen = 70;
-    const rocketWid = 3.7;
-    
+    const rocketConfig = getRocketConfig();
+    const flightState = {
+        currentStage: state.currentStage,
+        fairingJettisoned: state.fairingJettisoned,
+    };
+    const rocketLen = getFlightRocketLength(rocketConfig, flightState);
+    const visibilityScale = computeVisibilityScale(rocketLen, metersPerPixel);
+    const isBoosting = state.engineOn
+        && state.currentStage < rocketConfig.stages.length
+        && state.propellantRemaining[state.currentStage] > 0;
+
     ctx.save();
     const r = Math.sqrt(state.x * state.x + state.y * state.y);
     const localUp = { x: state.x / r, y: state.y / r };
@@ -326,73 +338,19 @@ export function render() {
     previousRocketCanvasAngle = canvasRotation;
     
     ctx.rotate(canvasRotation);
-    
-    // Make rocket visible even when zoomed out
-    const minPixelSize = 12;
-    const scale = Math.max(1, minPixelSize * metersPerPixel / rocketLen);
-    const drawLen = rocketLen * scale;
-    const drawWid = rocketWid * scale;
-    
-    // Body
-    ctx.fillStyle = '#f0f0f0';
-    ctx.fillRect(-drawWid/2, -drawLen * 0.4, drawWid, drawLen * 0.8);
-    
-    // Nose
-    ctx.beginPath();
-    ctx.moveTo(-drawWid/2, drawLen * 0.4);
-    ctx.lineTo(0, drawLen * 0.55);
-    ctx.lineTo(drawWid/2, drawLen * 0.4);
-    ctx.fillStyle = '#d33';
-    ctx.fill();
-    
-    // Fins
-    ctx.fillStyle = '#888';
-    ctx.beginPath();
-    ctx.moveTo(-drawWid/2, -drawLen * 0.35);
-    ctx.lineTo(-drawWid * 0.9, -drawLen * 0.45);
-    ctx.lineTo(-drawWid/2, -drawLen * 0.2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(drawWid/2, -drawLen * 0.35);
-    ctx.lineTo(drawWid * 0.9, -drawLen * 0.45);
-    ctx.lineTo(drawWid/2, -drawLen * 0.2);
-    ctx.fill();
-    
-    // Flame - only show when actually boosting (engine on, has propellant, valid stage)
-    if (state.engineOn && 
-        state.currentStage < getRocketConfig().stages.length && 
-        state.propellantRemaining[state.currentStage] > 0) {
-        
-        // Save context to apply gimbal rotation
-        ctx.save();
-        
-        // Rotate by gimbal angle (gimbal angle is in degrees, positive = deflect right/east)
-        // Convert to radians and rotate around the rocket base (where flame starts)
-        const gimbalAngleRad = state.gimbalAngle * Math.PI / 180;
-        ctx.rotate(gimbalAngleRad);
-        
-        const flameLen = drawLen * (0.5 + Math.random() * 0.25);
-        
-        // Outer flame (orange/red)
-        ctx.beginPath();
-        ctx.moveTo(-drawWid * 0.2, -drawLen * 0.4);
-        ctx.quadraticCurveTo(-drawWid * 0.35, -drawLen * 0.4 - flameLen * 0.5, 0, -drawLen * 0.4 - flameLen);
-        ctx.quadraticCurveTo(drawWid * 0.35, -drawLen * 0.4 - flameLen * 0.5, drawWid * 0.2, -drawLen * 0.4);
-        ctx.fillStyle = `rgb(255, ${80 + Math.random() * 60}, 0)`;
-        ctx.fill();
-        
-        // Inner flame (yellow/white)
-        ctx.beginPath();
-        ctx.moveTo(-drawWid * 0.1, -drawLen * 0.4);
-        ctx.quadraticCurveTo(-drawWid * 0.15, -drawLen * 0.4 - flameLen * 0.35, 0, -drawLen * 0.4 - flameLen * 0.6);
-        ctx.quadraticCurveTo(drawWid * 0.15, -drawLen * 0.4 - flameLen * 0.35, drawWid * 0.1, -drawLen * 0.4);
-        ctx.fillStyle = `rgb(255, ${200 + Math.random() * 55}, ${100 + Math.random() * 80})`;
-        ctx.fill();
-        
-        // Restore context (undo gimbal rotation)
-        ctx.restore();
+
+    if (rocketLen > 0) {
+        drawFlightRocket(ctx, {
+            config: rocketConfig,
+            currentStage: state.currentStage,
+            fairingJettisoned: state.fairingJettisoned,
+            visibilityScale,
+            noseUp: true,
+            showFlame: isBoosting,
+            gimbalAngleDeg: state.gimbalAngle,
+        });
     }
-    
+
     ctx.restore();
     
     // Draw thrust vector arrow - only show when actually boosting
@@ -976,42 +934,18 @@ function drawRocketDiagram(ctx, canvas, expanded = false) {
     ctx.translate(centerX, centerY);
     ctx.rotate(state.rocketAngle);
     
-    // Rocket coordinates: bottom at (0, +length/2), top at (0, -length/2)
     const rocketHalfLength = rocketDisplayLength / 2;
-    const rocketHalfWidth = rocketDisplayWidth / 2;
-    
-    // Draw rocket body - simple light grey tube
-    const bodyTop = -rocketHalfLength * 0.8; // Body starts 20% from top
-    const bodyBottom = rocketHalfLength * 0.8; // Body ends 20% from bottom
-    const bodyHeight = bodyBottom - bodyTop;
-    
-    // Draw light grey body tube (darker than main simulation)
-    ctx.fillStyle = '#b0b0b0'; // Light grey body
-    ctx.fillRect(-rocketHalfWidth, bodyTop, rocketDisplayWidth, bodyHeight);
-    
-    // Add subtle outline
-    ctx.strokeStyle = '#999';
-    ctx.lineWidth = expanded ? 1.5 : 1;
-    ctx.strokeRect(-rocketHalfWidth, bodyTop, rocketDisplayWidth, bodyHeight);
-    
-    // Draw nose cone (red, matching main simulation)
-    if (!state.fairingJettisoned) {
-        const noseBaseY = bodyTop;
-        const noseTipY = -rocketHalfLength;
-        
-        ctx.fillStyle = '#d33'; // Red nose
-        ctx.beginPath();
-        ctx.moveTo(-rocketHalfWidth, noseBaseY);
-        ctx.lineTo(0, noseTipY);
-        ctx.lineTo(rocketHalfWidth, noseBaseY);
-        ctx.closePath();
-        ctx.fill();
-        
-        ctx.strokeStyle = '#a00';
-        ctx.lineWidth = expanded ? 1.5 : 1;
-        ctx.stroke();
-    }
-    
+    const diagramVisibility = rocketLength > 0 ? rocketDisplayLength / rocketLength : 1;
+
+    drawFlightRocket(ctx, {
+        config: getRocketConfig(),
+        currentStage: state.currentStage,
+        fairingJettisoned: state.fairingJettisoned,
+        visibilityScale: diagramVisibility,
+        noseUp: false,
+        showFlame: false,
+    });
+
     // Calculate marker positions along rocket axis (Y coordinate in rotated frame)
     // Bottom is at +rocketHalfLength, top is at -rocketHalfLength
     const cogY = rocketHalfLength - (cogFromBottom * rocketDisplayLength);
