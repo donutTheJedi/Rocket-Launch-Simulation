@@ -56,9 +56,13 @@ export function updateRocketSummary(root = document) {
     const advisory = q(`${p}-advisory`);
     const advisoryTxt = q(`${p}-advisory-text`);
 
-    if (titleEl) titleEl.textContent = config.name || (isCustomRocket() ? 'CUSTOM ROCKET' : 'FALCON-9 MK1');
+    const custom = isCustomRocket();
+    if (titleEl) titleEl.textContent = config.name || (custom ? 'CUSTOM ROCKET' : 'FALCON-9 MK1');
     if (metaEl) metaEl.textContent = `${config.stages.length} STAGES · ${config.propellantType || 'KEROLOX'}`;
     if (dryEl) dryEl.textContent = totalDryMass >= 1000 ? `${(totalDryMass / 1000).toFixed(0)}t` : `${totalDryMass}kg`;
+
+    const resetBtn = document.getElementById('reset-rocket-btn');
+    if (resetBtn) resetBtn.style.display = custom ? '' : 'none';
     if (twrEl) twrEl.textContent = twr.toFixed(2);
     if (ispEl) ispEl.textContent = `${vacIsp}s`;
 

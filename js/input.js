@@ -31,6 +31,7 @@ function stopBurn() {
         state.burnMode = null;
         state.burnStartTime = null;
         state.engineOn = false;
+        if (activeBurnButton) activeBurnButton.classList.remove('active');
         activeBurnButton = null;
         // Mark that user has taken manual control - hide burn predictions
         state.manualBurnPerformed = true;
@@ -54,6 +55,7 @@ function setupBurnButton(buttonId, burnMode) {
             state.burnMode = burnMode;
             state.burnStartTime = state.time;
             activeBurnButton = btn;
+            btn.classList.add('active');
             addEvent(`${burnMode.toUpperCase()} burn started`);
         }
     });
@@ -96,11 +98,14 @@ export function initInput() {
     
     // Launch button
     document.getElementById('launch-btn').addEventListener('click', () => {
-        if (!state.running && state.time === 0 && state.gameMode !== null && state.gameMode !== 'orbital') {
-            console.log("console running")
-            state.running = true;
-            state.engineOn = true;
-            addEvent("LIFTOFF!");
+        if (!state.running && state.time === 0 && state.gameMode !== null) {
+            if (state.gameMode === 'orbital') {
+                state.running = true;
+            } else {
+                state.running = true;
+                state.engineOn = true;
+                addEvent("LIFTOFF!");
+            }
             document.getElementById('launch-btn').disabled = true;
             document.getElementById('launch-btn').style.display = 'none';
             document.getElementById('pause-btn').style.display = 'inline-block';
@@ -125,12 +130,10 @@ export function initInput() {
         resetCurrentMission();
         resetGuidance();
         if (state.gameMode === 'cubic') resetCubicGuidance();
-        document.getElementById('launch-btn').disabled = false;
-        if (state.gameMode !== 'orbital') {
-            document.getElementById('launch-btn').style.display = 'inline-block';
-        } else {
-            document.getElementById('launch-btn').style.display = 'none';
-        }
+        const launchBtnEl = document.getElementById('launch-btn');
+        launchBtnEl.disabled = false;
+        launchBtnEl.style.display = 'inline-block';
+        launchBtnEl.textContent = (state.gameMode === 'orbital') ? 'START' : 'LAUNCH';
         document.getElementById('pause-btn').style.display = 'none';
         document.getElementById('pause-btn').textContent = 'PAUSE';
         
@@ -169,15 +172,48 @@ export function initInput() {
         }
     });
     
-    // Camera button
+    // Camera button (variant A)
     document.getElementById('camera-btn').addEventListener('click', () => {
         state.cameraMode = state.cameraMode === 'rocket' ? 'earth' : 'rocket';
         document.getElementById('camera-btn').textContent = state.cameraMode === 'rocket' ? 'FOLLOW ROCKET' : 'CENTER EARTH';
+        updateCameraBtnLabels();
         if (state.cameraMode === 'earth') {
             state.manualZoom = 1.0;
             state.autoZoom = false;
         }
     });
+
+    // Menu button (variant B bottom bar)
+    const bMenuBtn = document.getElementById('b-menu-btn');
+    if (bMenuBtn) {
+        bMenuBtn.addEventListener('click', () => {
+            if (window.showMenu) window.showMenu();
+        });
+    }
+
+    // Camera button (variant B bottom bar)
+    const bCameraBtn = document.getElementById('b-camera-btn');
+    if (bCameraBtn) {
+        bCameraBtn.addEventListener('click', () => {
+            state.cameraMode = state.cameraMode === 'rocket' ? 'earth' : 'rocket';
+            updateCameraBtnLabels();
+            if (state.cameraMode === 'earth') {
+                state.manualZoom = 1.0;
+                state.autoZoom = false;
+            }
+        });
+    }
+
+    function updateCameraBtnLabels() {
+        const isRocket = state.cameraMode === 'rocket';
+        const aBtn = document.getElementById('camera-btn');
+        const bBtn = document.getElementById('b-camera-btn');
+        if (aBtn) aBtn.textContent = isRocket ? 'FOLLOW ROCKET' : 'CENTER EARTH';
+        if (bBtn) {
+            bBtn.textContent = isRocket ? 'ROCKET CAM' : 'ORBITAL CAM';
+            bBtn.classList.toggle('orbital-active', !isRocket);
+        }
+    }
     
     // Mouse wheel zoom
     const canvas = getCanvas();
@@ -224,13 +260,15 @@ export function initInput() {
     
     document.addEventListener('keydown', (e) => {
         if (state.gameMode === 'manual' && state.running) {
-            if (e.key === 'w' || e.key === 'W') {
+            if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') {
+                if (e.key === 'ArrowUp') e.preventDefault();
                 pitchUpHeld = true;
                 if (state.manualPitch === null) {
                     state.manualPitch = state.guidancePitch || 90;
                 }
             }
-            if (e.key === 's' || e.key === 'S') {
+            if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') {
+                if (e.key === 'ArrowDown') e.preventDefault();
                 pitchDownHeld = true;
                 if (state.manualPitch === null) {
                     state.manualPitch = state.guidancePitch || 90;
@@ -240,8 +278,8 @@ export function initInput() {
     });
     
     document.addEventListener('keyup', (e) => {
-        if (e.key === 'w' || e.key === 'W') pitchUpHeld = false;
-        if (e.key === 's' || e.key === 'S') pitchDownHeld = false;
+        if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') pitchUpHeld = false;
+        if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') pitchDownHeld = false;
     });
     
     // Manual pitch button controls
@@ -376,10 +414,16 @@ export function initInput() {
             gimbalDisplay.style.display = isGimbalMode ? 'block' : 'none';
         }
         if (pitchUpBtn) {
-            pitchUpBtn.innerHTML = isGimbalMode ? '↑ GIMBAL UP<br>(W Key)' : '↑ PITCH UP<br>(W Key)';
+            pitchUpBtn.innerHTML = isGimbalMode ? '↑ GIMBAL UP<br>(W / ↑)' : '↑ PITCH UP<br>(W / ↑)';
         }
         if (pitchDownBtn) {
-            pitchDownBtn.innerHTML = isGimbalMode ? '↓ GIMBAL DOWN<br>(S Key)' : '↓ PITCH DOWN<br>(S Key)';
+            pitchDownBtn.innerHTML = isGimbalMode ? '↓ GIMBAL DOWN<br>(S / ↓)' : '↓ PITCH DOWN<br>(S / ↓)';
+        }
+
+        // Variant B: show turn rate only in gimbal mode (it's the effect of gimbal input)
+        const turnRateRow = document.getElementById('b-turnrate-row');
+        if (turnRateRow) {
+            turnRateRow.style.display = isGimbalMode ? 'flex' : 'none';
         }
     }
     

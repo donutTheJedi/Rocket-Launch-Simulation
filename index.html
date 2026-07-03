@@ -6,6 +6,15 @@
     <meta name="description" content="Interactive rocket trajectory simulator with realistic physics, atmospheric modeling, and orbital mechanics. Visualize launches from Earth to orbit.">
     <title>Rocket Launch Trajectory Simulator | 3D Orbital Mechanics Visualization</title>
     <link rel="stylesheet" href="css/styles.css">
+    <!-- Microsoft Clarity A/B -->
+    <script type="text/javascript">
+      (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+      })(window,document,"clarity","script","CLARITY_ID");
+    </script>
+    <script>clarity("set","ab_variant","a");</script>
 </head>
 <body>
     <canvas id="canvas"></canvas>
@@ -214,7 +223,10 @@
                         </div>
                         <div class="menu-rocket-meta" id="menu-rocket-meta">2 STAGES · KEROLOX</div>
                     </div>
-                    <a href="builder.html" id="build-rocket-btn" class="menu-build-inline-btn">BUILD ›</a>
+                    <div class="menu-build-btn-group">
+                        <button id="reset-rocket-btn" class="menu-reset-rocket-btn" style="display:none" title="Reset to default rocket">RESET</button>
+                        <a href="builder.html" id="build-rocket-btn" class="menu-build-inline-btn">BUILD ›</a>
+                    </div>
                 </div>
                 <div class="menu-rocket-stats">
                     <div class="menu-rocket-stat">
@@ -328,12 +340,12 @@
     </div>
     
     <div id="burn-controls" style="display: none;">
-        <h3 style="color: #0ff; margin-bottom: 10px;">ORBITAL BURNS</h3>
-        <div id="burn-status" style="color: #0f0; font-size: 11px; margin-bottom: 10px; min-height: 30px;">
+        <h3>ORBITAL BURNS</h3>
+        <div id="burn-status">
             <div>Hold button to burn</div>
         </div>
-        <div style="display: flex; flex-direction: column; gap: 5px;">
-            <button id="refuel-btn" style="background: #2a2; border-color: #2a2; margin-bottom: 5px;">REFUEL (5000 kg)</button>
+        <div id="burn-btn-grid">
+            <button id="refuel-btn">REFUEL (5000 kg)</button>
             <button id="burn-prograde-btn">PROGRADE</button>
             <button id="burn-retrograde-btn">RETROGRADE</button>
             <button id="burn-normal-btn">NORMAL</button>

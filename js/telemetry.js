@@ -1,4 +1,4 @@
-import { EARTH_RADIUS, KARMAN_LINE } from './constants.js';
+import { EARTH_RADIUS, KARMAN_LINE, G, EARTH_MASS } from './constants.js';
 import { getRocketConfig } from './rocketConfig.js';
 import { state, getAltitude, getTotalMass, getPitch } from './state.js';
 import { getAtmosphericDensity, getCurrentThrust, getAirspeed, getCurrentDragCoefficient, calculateRocketCOG, calculateFuelLevel, calculateCenterOfPressure, getMachNumber } from './physics.js';
@@ -298,10 +298,10 @@ export function updateTelemetry() {
     const controlsPanel = document.getElementById('controls');
     const wasVisible = burnControls.style.display === 'block';
     
-    // Show burn controls in orbital mode or when in orbit
+    // Show burn controls in orbital mode (only after START pressed) or when in orbit
     // On mobile in manual mode: show in bottom right when fuel runs out (replacing manual pitch controls)
-    if (state.gameMode === 'orbital') {
-        // In orbital mode, always show controls directly on the left
+    if (state.gameMode === 'orbital' && state.running) {
+        // In orbital mode, show controls directly on the left once simulation is running
         burnControls.style.display = 'block';
         burnControls.classList.add('in-orbit');
         if (isMobile) {
@@ -314,7 +314,7 @@ export function updateTelemetry() {
         if (controlsPanel) {
             controlsPanel.classList.add('burn-controls-in-orbit');
         }
-    } else if (inOrbit) {
+    } else if (inOrbit && state.running) {
         // Show controls when we've achieved orbit
         burnControls.style.display = 'block';
         burnControls.classList.add('in-orbit');
@@ -398,12 +398,14 @@ export function updateTelemetry() {
             'anti-radial': 'ANTI-RADIAL'
         };
         burnStatus.innerHTML = `
-            <div style="color: #0ff; font-weight: bold;">BURNING: ${burnNames[state.burnMode]}</div>
-            <div style="color: #0f0;">Duration: ${burnDuration.toFixed(1)}s</div>
+            <div class="burn-status-active">BURNING: ${burnNames[state.burnMode]}</div>
+            <div class="burn-status-duration">Duration: ${burnDuration.toFixed(1)}s</div>
         `;
     } else {
         burnStatus.innerHTML = '<div>Hold button to burn</div>';
     }
+
+    updateVariantB();
 }
 
 function fmtMPa(pa) {
@@ -467,4 +469,210 @@ function updateStructuralPanel() {
     }
 
     panel.innerHTML = html;
+}
+
+// ─── Variant B UI updates ────────────────────────────────────────────────────
+// Called from updateTelemetry() only when B elements are present.
+// All getElementById calls are null-checked so this silently no-ops on variant A.
+
+export function updateVariantB() {
+    if (document.body.dataset.variant !== 'b') return;
+
+    const altitude = getAltitude();
+    const r = Math.sqrt(state.x * state.x + state.y * state.y);
+    const velocity = Math.sqrt(state.vx * state.vx + state.vy * state.vy);
+    const localUp = { x: state.x / r, y: state.y / r };
+    const vVert = state.vx * localUp.x + state.vy * localUp.y;
+    const vHoriz = Math.sqrt(Math.max(0, velocity * velocity - vVert * vVert));
+
+    const config = getRocketConfig();
+
+    // Header: mission name + phase
+    const nameEl = document.getElementById('hdr-mission-name');
+    if (nameEl) nameEl.textContent = (config.name || 'ROCKET').toUpperCase();
+
+    const phaseEl = document.getElementById('hdr-phase');
+    if (phaseEl) {
+        let phase = 'PRELAUNCH';
+        if (state.running) {
+            if (state.gameMode === 'orbital') phase = 'ORBITAL';
+            else if (altitude > 150000 && !state.engineOn) phase = 'IN ORBIT';
+            else if (!state.engineOn && state.currentStage > 0) phase = 'COASTING';
+            else phase = `ASCENT · STAGE ${state.currentStage + 1}`;
+        }
+        phaseEl.textContent = phase;
+    }
+
+    // Status badge (MAX Q PASSED, MECO, IN ORBIT, etc.)
+    const badge = document.getElementById('hdr-status-badge');
+    if (badge) {
+        const { airspeed } = getAirspeed();
+        const currentDynPress = altitude < KARMAN_LINE
+            ? 0.5 * getAtmosphericDensity(altitude) * airspeed * airspeed
+            : 0;
+        const pastMaxQ = state.maxQ > 500 && currentDynPress < state.maxQ * 0.7 && state.time > 30;
+
+        let badgeText = '';
+        let inOrbitB = false;
+        if (altitude > 150000 && !state.engineOn) {
+            try {
+                const mu = G * EARTH_MASS;
+                const energy = (velocity * velocity / 2) - (mu / r);
+                const a = -mu / (2 * energy);
+                const h = state.x * state.vy - state.y * state.vx;
+                const ecc = Math.sqrt(Math.max(0, 1 + (2 * energy * h * h) / (mu * mu)));
+                const peri = a * (1 - ecc) - EARTH_RADIUS;
+                inOrbitB = peri > 150000 && energy < 0;
+            } catch (_) {}
+        }
+
+        if (inOrbitB) badgeText = 'IN ORBIT';
+        else if (!state.engineOn && state.currentStage >= 1 && state.time > 5) badgeText = 'MECO';
+        else if (pastMaxQ) badgeText = 'MAX Q PASSED';
+
+        if (badgeText) {
+            badge.textContent = badgeText;
+            badge.hidden = false;
+        } else {
+            badge.hidden = true;
+        }
+    }
+
+    // Velocity bars (0–8000 m/s scale)
+    const V_MAX = 8000;
+    const vvelBar = document.getElementById('vvel-bar');
+    const hvelBar = document.getElementById('hvel-bar');
+    if (vvelBar) vvelBar.style.width = Math.min(100, Math.abs(vVert) / V_MAX * 100).toFixed(1) + '%';
+    if (hvelBar) hvelBar.style.width = Math.min(100, vHoriz / V_MAX * 100).toFixed(1) + '%';
+
+    // Mission phase progress bar
+    updateBPhases(altitude, velocity);
+
+    // Flight plan
+    updateBFlightPlan();
+
+    // Guide box
+    updateBGuide(altitude, velocity);
+}
+
+function updateBPhases(altitude, velocity) {
+    const phases = ['prelaunch', 'liftoff', 'ascent', 'meco', 'orbit'];
+    let currentPhaseIdx = 0;
+
+    if (!state.running || state.time < 1) {
+        currentPhaseIdx = 0;
+    } else if (state.time < 20) {
+        currentPhaseIdx = 1;
+    } else if (state.engineOn && state.currentStage === 0) {
+        currentPhaseIdx = 2;
+    } else if (!state.engineOn && altitude < 150000) {
+        currentPhaseIdx = 3;
+    } else {
+        currentPhaseIdx = 4;
+    }
+
+    phases.forEach((name, idx) => {
+        const el = document.getElementById('b-phase-' + name);
+        if (!el) return;
+        el.classList.remove('phase-past', 'phase-current');
+        if (idx < currentPhaseIdx) el.classList.add('phase-past');
+        else if (idx === currentPhaseIdx) el.classList.add('phase-current');
+    });
+
+    // Phase connector lines
+    const lines = ['liftoff', 'ascent', 'meco', 'orbit'];
+    lines.forEach((name, idx) => {
+        const el = document.getElementById('b-pline-' + name);
+        if (!el) return;
+        el.classList.remove('line-past', 'line-current');
+        if (idx + 1 < currentPhaseIdx) el.classList.add('line-past');
+        else if (idx + 1 === currentPhaseIdx) el.classList.add('line-current');
+    });
+}
+
+function updateBFlightPlan() {
+    const list = document.getElementById('b-flight-plan-list');
+    if (!list) return;
+
+    const items = [];
+
+    // Past events from state.events (newest last → reverse for timeline display)
+    const past = [...state.events].reverse().slice(-5).reverse();
+    past.forEach(ev => {
+        items.push({ type: 'past', name: ev.text, time: 'T+' + ev.time });
+    });
+
+    // Current event marker (approximate from phase)
+    const altitude = getAltitude();
+    const velocity = Math.sqrt(state.vx * state.vx + state.vy * state.vy);
+    if (state.running && state.time > 1) {
+        let curName = '';
+        if (state.currentStage === 0 && state.engineOn) curName = 'Ascent burn';
+        else if (state.currentStage === 1 && state.engineOn) curName = 'Stage 2 burn';
+        else if (!state.engineOn && altitude < 150000) curName = 'Coasting';
+        else if (altitude >= 150000) curName = 'In orbit';
+        if (curName) {
+            const mins = Math.floor(state.time / 60).toString().padStart(2, '0');
+            const secs = Math.floor(state.time % 60).toString().padStart(2, '0');
+            items.push({ type: 'current', name: curName, time: 'T+' + mins + ':' + secs, now: true });
+        }
+    }
+
+    // Next upcoming event
+    const next = getNextEvent();
+    if (next && state.running) {
+        const eta = next.time;
+        const totalSec = Math.round(state.time + eta);
+        const mins = Math.floor(totalSec / 60).toString().padStart(2, '0');
+        const secs = Math.floor(totalSec % 60).toString().padStart(2, '0');
+        items.push({ type: 'future', name: next.name, time: '~T+' + mins + ':' + secs });
+    }
+
+    list.innerHTML = items.map(item => `
+        <div class="b-fp-item fp-${item.type}">
+            <div class="b-fp-dot"></div>
+            <div class="b-fp-info">
+                <span class="b-fp-name">${item.name}${item.now ? '<span class="b-fp-now">· now</span>' : ''}</span>
+                <span class="b-fp-time">${item.time}</span>
+            </div>
+        </div>
+    `).join('');
+}
+
+function updateBGuide(altitude, velocity) {
+    const guideEl = document.getElementById('b-guide-text');
+    if (!guideEl) return;
+
+    const { airspeed } = getAirspeed();
+    const currentDynPress = altitude < KARMAN_LINE
+        ? 0.5 * getAtmosphericDensity(altitude) * airspeed * airspeed
+        : 0;
+    const pastMaxQ = state.maxQ > 500 && currentDynPress < state.maxQ * 0.7 && state.time > 30;
+    const approachingMaxQ = state.maxQ > 100 && currentDynPress > state.maxQ * 0.8 && altitude < 20000;
+
+    let msg = 'Select a flight mode from the menu to begin your mission.';
+
+    if (state.running) {
+        if (state.time < 5) {
+            msg = 'Liftoff! Engines at full thrust. Clear the tower.';
+        } else if (state.time < 15) {
+            msg = 'Tower clear. Beginning gravity turn program.';
+        } else if (approachingMaxQ) {
+            msg = 'Approaching Max Q — maximum dynamic pressure. Watch structural loads.';
+        } else if (!pastMaxQ && altitude < 30000) {
+            msg = 'Climbing through the atmosphere. Gravity turn in progress.';
+        } else if (pastMaxQ && state.engineOn && state.currentStage === 0) {
+            msg = 'Past Max Q — safe to throttle up. Watch the timeline for MECO.';
+        } else if (!state.engineOn && state.currentStage === 0 && altitude < KARMAN_LINE) {
+            msg = 'MECO. Stage separation upcoming. Coasting to staging altitude.';
+        } else if (state.currentStage === 1 && state.engineOn) {
+            msg = 'Stage 2 ignition. Pushing to orbit. Watch your apoapsis.';
+        } else if (!state.engineOn && altitude < 150000) {
+            msg = 'Coasting to apoapsis. Prepare for circularization burn.';
+        } else if (altitude >= 150000) {
+            msg = 'Approaching orbital altitude. Use burns to circularize the trajectory.';
+        }
+    }
+
+    guideEl.textContent = msg;
 }

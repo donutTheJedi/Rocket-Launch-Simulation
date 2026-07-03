@@ -1,5 +1,5 @@
 import { EARTH_RADIUS, EARTH_ROTATION, KARMAN_LINE, GUIDANCE_CONFIG } from './constants.js';
-import { getRocketConfig, isCustomRocket } from './rocketConfig.js';
+import { getRocketConfig, isCustomRocket, resetToDefault } from './rocketConfig.js';
 import { updateRocketSummary } from './rocketSummary.js';
 import { state, initState, getAltitude, getTotalMass, resetCurrentMission, spawnInOrbit } from './state.js';
 import { getGravity, getCurrentThrust, getMassFlowRate, getAtmosphericDensity, getAirspeed, getDrag, 
@@ -580,7 +580,8 @@ function startMission(mode, options = {}) {
     // which makes the new mode appear to not start.
     if (launchBtn) {
         launchBtn.disabled = false;
-        launchBtn.style.display = (mode === 'orbital') ? 'none' : 'inline-block';
+        launchBtn.style.display = 'inline-block';
+        launchBtn.textContent = (mode === 'orbital') ? 'START' : 'LAUNCH';
     }
     if (pauseBtn) {
         pauseBtn.style.display = 'none';
@@ -665,13 +666,10 @@ function updateUIForMode() {
         }
     }
     
-    // Show launch button only for manual, guided, and cubic modes
-    if (launchBtn) {
-        if (state.gameMode === 'orbital') {
-            launchBtn.style.display = 'none';
-        } else if (state.gameMode !== null) {
-            launchBtn.style.display = 'inline-block';
-        }
+    // Show launch button for all modes; orbital shows "START" instead of "LAUNCH"
+    if (launchBtn && state.gameMode !== null) {
+        launchBtn.style.display = 'inline-block';
+        launchBtn.textContent = (state.gameMode === 'orbital') ? 'START' : 'LAUNCH';
     }
 }
 
@@ -866,6 +864,15 @@ function initMenu() {
     
     if (menuOverlay) {
         menuOverlay.addEventListener('click', hideMenu);
+    }
+
+    const resetRocketBtn = document.getElementById('reset-rocket-btn');
+    if (resetRocketBtn) {
+        resetRocketBtn.addEventListener('click', () => {
+            resetToDefault();
+            updateRocketSummary();
+            updateGuidanceModeAvailability();
+        });
     }
     
     if (startManualBtn) {

@@ -178,7 +178,7 @@ export function spawnInOrbit(altitude = 500000) {
     const vx0 = vCircular;
     const vy0 = 0;
     
-    state.running = true;
+    state.running = false;
     state.time = 0;
     state.timeWarp = 1;
     state.x = x0;

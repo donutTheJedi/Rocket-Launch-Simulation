@@ -17,6 +17,44 @@ let ctx = null;
 // Track previous rocket rotation angle for smooth interpolation
 let previousRocketCanvasAngle = null;
 
+// Star field — generated once with Math.random() at module load, never again at runtime
+const STAR_COUNT = 300;
+const stars = Array.from({ length: STAR_COUNT }, () => ({
+    fx:    Math.random(),                        // 0-1 screen-width fraction
+    fy:    Math.random(),                        // 0-1 screen-height fraction
+    size:  Math.random() > 0.7 ? 2 : 1,         // ~30% are 2-px, rest 1-px
+    alpha: 0.5 + Math.random() * 0.5,           // 0.5–1.0 brightness
+}));
+
+// Sky/atmosphere color keyed to altitude in metres
+// Returns an [r, g, b] triple (0-255 integers)
+function skyColorAt(altMeters) {
+    const stops = [
+        { alt: 0,      r: 50,  g: 130, b: 210 },  // sea-level: bright daytime blue
+        { alt: 5000,   r: 30,  g: 90,  b: 175 },  // lower troposphere: medium blue
+        { alt: 15000,  r: 12,  g: 50,  b: 130 },  // upper troposphere: dark blue
+        { alt: 30000,  r: 5,   g: 20,  b: 80  },  // stratosphere: deep blue
+        { alt: 60000,  r: 3,   g: 6,   b: 35  },  // mesosphere: near-black blue
+        { alt: 80000,  r: 1,   g: 1,   b: 8   },  // near-space
+        { alt: 120000, r: 0,   g: 0,   b: 2   },  // orbit: black
+    ];
+    if (altMeters <= stops[0].alt) return [stops[0].r, stops[0].g, stops[0].b];
+    const last = stops[stops.length - 1];
+    if (altMeters >= last.alt) return [last.r, last.g, last.b];
+    for (let i = 0; i < stops.length - 1; i++) {
+        const a = stops[i], b = stops[i + 1];
+        if (altMeters >= a.alt && altMeters < b.alt) {
+            const t = (altMeters - a.alt) / (b.alt - a.alt);
+            return [
+                Math.round(a.r + t * (b.r - a.r)),
+                Math.round(a.g + t * (b.g - a.g)),
+                Math.round(a.b + t * (b.b - a.b)),
+            ];
+        }
+    }
+    return [0, 0, 0];
+}
+
 // Initialize renderer with canvas element
 export function initRenderer(canvasElement) {
     canvas = canvasElement;
@@ -40,39 +78,51 @@ export function resize() {
 export function render() {
     if (!ctx || !canvas) return;
     
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
     const altitude = getAltitude();
-    
-    // ZOOM: Start at 2 m/px (very close), smoothly zoom out as altitude increases
+
+    // ── Zoom — compute once, reused for both gradient and world drawing ──
     const minMPP = 2;
-    const maxMPP = state.cameraMode === 'earth' ? Infinity : (EARTH_RADIUS * 20 / Math.min(canvas.width, canvas.height));
-    
-    let autoMetersPerPixel;
+    let autoMPP;
     if (state.cameraMode === 'earth') {
-        const defaultEarthZoom = EARTH_RADIUS * 2.5 / Math.min(canvas.width, canvas.height);
-        autoMetersPerPixel = defaultEarthZoom;
+        autoMPP = EARTH_RADIUS * 2.5 / Math.min(canvas.width, canvas.height);
     } else if (altitude < 500) {
-        autoMetersPerPixel = minMPP;
+        autoMPP = minMPP;
     } else {
+        const maxMPP = EARTH_RADIUS * 20 / Math.min(canvas.width, canvas.height);
         const zoomProgress = Math.min(1, Math.log10(altitude / 500) / 6);
-        autoMetersPerPixel = minMPP * Math.pow(maxMPP / minMPP, zoomProgress);
+        autoMPP = minMPP * Math.pow(maxMPP / minMPP, zoomProgress);
     }
-    
-    const metersPerPixel = (state.cameraMode === 'earth' || !state.autoZoom) 
-        ? autoMetersPerPixel / state.manualZoom 
-        : autoMetersPerPixel / state.manualZoom;
-    
+    const metersPerPixel = autoMPP / state.manualZoom;
+
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
-    
-    // Stars
-    ctx.fillStyle = '#fff';
-    for (let i = 0; i < 200; i++) {
-        const sx = (Math.sin(i * 567.89 + 1000) * 0.5 + 0.5) * canvas.width;
-        const sy = (Math.cos(i * 123.45 + 500) * 0.5 + 0.5) * canvas.height;
-        ctx.fillRect(sx, sy, Math.random() > 0.85 ? 2 : 1, 1);
+
+    // ── Background: drawn directly on canvas for reliable rendering ──
+    canvas.style.background = 'none';
+    if (state.cameraMode === 'earth') {
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    } else {
+        const altAtTop = altitude + canvas.height * metersPerPixel * 0.6;
+        const [r1, g1, b1] = skyColorAt(altitude);
+        const [r2, g2, b2] = skyColorAt(altAtTop);
+        const skyGrad = ctx.createLinearGradient(0, canvas.height, 0, 0);
+        skyGrad.addColorStop(0, `rgb(${r1},${g1},${b1})`);
+        skyGrad.addColorStop(1, `rgb(${r2},${g2},${b2})`);
+        ctx.fillStyle = skyGrad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // ── Stars — pre-generated, fade in above 20 km, fully visible at 60 km+ ──
+    // In earth-centered camera mode, always show stars at full brightness.
+    const starOpacity = state.cameraMode === 'earth'
+        ? 1
+        : Math.min(1, Math.max(0, (altitude - 20000) / 40000));
+    if (starOpacity > 0) {
+        for (const star of stars) {
+            ctx.fillStyle = `rgba(255,255,255,${(star.alpha * starOpacity).toFixed(3)})`;
+            ctx.fillRect(star.fx * canvas.width, star.fy * canvas.height, star.size, 1);
+        }
     }
     
     ctx.save();
@@ -204,12 +254,93 @@ export function render() {
         ctx.restore();
     }
     
-    // Ground detail when close
+    // Launch pad — only visible when zoomed in close
     if (metersPerPixel < 20) {
-        ctx.fillStyle = '#555';
-        ctx.fillRect(-30, EARTH_RADIUS - 1, 60, 2);
-        ctx.fillStyle = '#777';
-        ctx.fillRect(-25, EARTH_RADIUS, 4, 60);
+        const py = EARTH_RADIUS; // surface Y
+
+        // Launch tower — scaled to rocket
+        const padConfig  = getRocketConfig();
+        const padRktLen  = padConfig.totalLength ||
+            ((padConfig.stages || []).reduce((s, st) => s + (st.length || 0), 0) +
+             (padConfig.payload?.length || 0) + (padConfig.fairing?.length || 0));
+        const padRktDiam = padConfig.stages?.[0]?.diameter || 3.7;
+
+        const towerH   = padRktLen * 1.15;
+        const towerX   = padRktDiam / 2 + padRktLen * 0.22;
+        const towerW   = Math.max(padRktLen * 0.07, 3);
+        const bayH     = towerH / 7;
+
+        // Tower uprights
+        ctx.fillStyle = '#484848';
+        ctx.fillRect(towerX,                  py, towerW * 0.25, towerH);
+        ctx.fillRect(towerX + towerW * 0.75,  py, towerW * 0.25, towerH);
+
+        // Cross-brace lattice
+        ctx.strokeStyle = '#383838';
+        ctx.lineWidth = metersPerPixel * 1.2;
+        for (let h = 0; h < towerH; h += bayH) {
+            ctx.beginPath();
+            ctx.moveTo(towerX,          py + h);
+            ctx.lineTo(towerX + towerW, py + h + bayH);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(towerX + towerW, py + h);
+            ctx.lineTo(towerX,          py + h + bayH);
+            ctx.stroke();
+        }
+
+        // Horizontal bay dividers
+        ctx.strokeStyle = '#424242';
+        ctx.lineWidth = metersPerPixel * 0.8;
+        for (let h = 0; h <= towerH; h += bayH) {
+            ctx.beginPath();
+            ctx.moveTo(towerX, py + h);
+            ctx.lineTo(towerX + towerW, py + h);
+            ctx.stroke();
+        }
+
+        // Hold arm — lattice beam at 65% up the rocket
+        const armY     = padRktLen * 0.65;
+        const armH     = Math.max(padRktLen * 0.04, 2.5);  // arm beam height
+        const armEnd   = padRktDiam / 2;
+        const armLen   = towerX - armEnd;
+        const armBayW  = armLen / 5;                        // 5 diagonal bays along arm length
+
+        // Arm top and bottom chords (two parallel rails)
+        ctx.fillStyle = '#484848';
+        ctx.fillRect(armEnd, py + armY,          armLen, armH * 0.2);  // top chord
+        ctx.fillRect(armEnd, py + armY + armH * 0.8, armLen, armH * 0.2);  // bottom chord
+
+        // Diagonal cross-braces along the arm
+        ctx.strokeStyle = '#383838';
+        ctx.lineWidth = metersPerPixel * 1.2;
+        for (let i = 0; i < 5; i++) {
+            const x0 = armEnd + i * armBayW;
+            const x1 = armEnd + (i + 1) * armBayW;
+            ctx.beginPath();
+            ctx.moveTo(x0, py + armY);
+            ctx.lineTo(x1, py + armY + armH);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x1, py + armY);
+            ctx.lineTo(x0, py + armY + armH);
+            ctx.stroke();
+        }
+
+        // Vertical bay dividers along the arm
+        ctx.strokeStyle = '#424242';
+        ctx.lineWidth = metersPerPixel * 0.8;
+        for (let i = 0; i <= 5; i++) {
+            const x = armEnd + i * armBayW;
+            ctx.beginPath();
+            ctx.moveTo(x, py + armY);
+            ctx.lineTo(x, py + armY + armH);
+            ctx.stroke();
+        }
+
+        // Clamp at rocket contact point
+        ctx.fillStyle = '#606060';
+        ctx.fillRect(armEnd - armH * 0.3, py + armY - armH * 0.4, armH * 0.5, armH * 1.8);
     }
     
     // Atmosphere layers (when zoomed out)
@@ -520,12 +651,22 @@ export function render() {
     ctx.fillText(`${metersPerPixel < 1000 ? metersPerPixel.toFixed(1) + ' m/px' : (metersPerPixel/1000).toFixed(2) + ' km/px'}`, 10, canvas.height - 10);
     
     // Draw diagrams
-    const showForceDiagram = state.telemetryTab === 'flight' || state.expandedDiagram === 'forces';
-    if (showForceDiagram) {
-        if (state.expandedDiagram === 'forces') {
-            drawForceDiagram(ctx, canvas, true);
-        } else {
-            drawForceDiagram(ctx, canvas, false);
+    const isVariantB = document.body.dataset.variant === 'b';
+    if (isVariantB) {
+        // Variant B: draw force diagram inside the All Metrics popup canvas
+        const forceCanvas = document.getElementById('b-force-canvas');
+        const popup = document.getElementById('b-metrics-popup');
+        if (forceCanvas && popup && !popup.hidden) {
+            drawForceDiagramToCanvas(forceCanvas);
+        }
+    } else {
+        const showForceDiagram = state.telemetryTab === 'flight' || state.expandedDiagram === 'forces';
+        if (showForceDiagram) {
+            if (state.expandedDiagram === 'forces') {
+                drawForceDiagram(ctx, canvas, true);
+            } else {
+                drawForceDiagram(ctx, canvas, false);
+            }
         }
     }
 
@@ -739,18 +880,92 @@ export function drawTelemetryRocketDiagram(targetCanvas) {
     });
 }
 
+// Draw force diagram into a dedicated HTML canvas element (used by variant B popup)
+function drawForceDiagramToCanvas(targetCanvas) {
+    const tCtx = targetCanvas.getContext('2d');
+    if (!tCtx) return;
+    const w = targetCanvas.width;
+    const h = targetCanvas.height;
+    const cx = w / 2;
+    const cy = h / 2;
+    const radius = Math.min(w, h) * 0.28;
+    const arrowLen = radius * 0.85;
+    const headSize = 7;
+
+    tCtx.clearRect(0, 0, w, h);
+    tCtx.fillStyle = 'rgba(8, 18, 40, 0.95)';
+    tCtx.fillRect(0, 0, w, h);
+
+    // Reference circle
+    tCtx.strokeStyle = '#1e293b';
+    tCtx.lineWidth = 1;
+    tCtx.beginPath();
+    tCtx.arc(cx, cy, radius, 0, Math.PI * 2);
+    tCtx.stroke();
+
+    // Center dot
+    tCtx.fillStyle = '#94a3b8';
+    tCtx.beginPath();
+    tCtx.arc(cx, cy, 3, 0, Math.PI * 2);
+    tCtx.fill();
+
+    // Force vectors
+    const vectors = [
+        { vec: state.forceVectors.gravity, color: '#f87171', label: 'G' },
+        { vec: state.forceVectors.thrust,  color: '#4ade80', label: 'T' },
+        { vec: state.forceVectors.drag,    color: '#fbbf24', label: 'D' },
+        { vec: state.forceVectors.aero,    color: '#38bdf8', label: 'A' },
+    ];
+    for (const { vec, color, label } of vectors) {
+        if (vec.x !== 0 || vec.y !== 0) {
+            drawForceVector(tCtx, cx, cy, vec, arrowLen, headSize, color, label, false);
+        }
+    }
+
+    // Legend — bottom left
+    const legend = [
+        { color: '#f87171', label: 'G Gravity' },
+        { color: '#4ade80', label: 'T Thrust' },
+        { color: '#fbbf24', label: 'D Drag' },
+        { color: '#38bdf8', label: 'A Aero' },
+    ];
+    tCtx.font = '9px Courier New';
+    tCtx.textAlign = 'left';
+    legend.forEach(({ color, label }, i) => {
+        tCtx.fillStyle = color;
+        tCtx.fillText(label, 6, h - 6 - (legend.length - 1 - i) * 13);
+    });
+}
+
 // Draw force diagram in top right, beneath Mission Events (position updates with events panel height)
 function drawForceDiagram(ctx, canvas, expanded = false) {
-    const diagramSize = expanded ? 300 : 120; // Larger when expanded
+    const isVariantB = document.body.dataset.variant === 'b';
+    const diagramSize = expanded ? 300 : (isVariantB ? 160 : 120);
     const gap = 10;
     const rightMargin = 20;
-    
-    const eventsEl = document.getElementById('events');
-    const top = eventsEl ? eventsEl.getBoundingClientRect().bottom + gap : 20 + 320 + gap;
-    
-    // If expanded, center it on screen
-    const centerX = expanded ? canvas.width / 2 : canvas.width - rightMargin - diagramSize / 2;
-    const centerY = expanded ? canvas.height / 2 : top + diagramSize / 2;
+
+    let centerX, centerY;
+    if (expanded) {
+        centerX = canvas.width / 2;
+        centerY = canvas.height / 2;
+    } else if (isVariantB) {
+        // Position using the #b-force-anchor div (placed via CSS)
+        const anchor = document.getElementById('b-force-anchor');
+        if (anchor) {
+            const rect = anchor.getBoundingClientRect();
+            centerX = rect.left + rect.width / 2;
+            centerY = rect.top + rect.height / 2;
+        } else {
+            centerX = canvas.width - 230 - diagramSize / 2;
+            centerY = 120 + diagramSize / 2;
+        }
+    } else {
+        const eventsEl = document.getElementById('events');
+        const top = eventsEl ? eventsEl.getBoundingClientRect().bottom + gap : 20 + 320 + gap;
+        centerX = canvas.width - rightMargin - diagramSize / 2;
+        centerY = top + diagramSize / 2;
+    }
+
     const radius = expanded ? 100 : 40;
     
     // Background

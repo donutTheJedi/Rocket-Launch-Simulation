@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="description" content="Interactive rocket trajectory simulator with realistic physics, atmospheric modeling, and orbital mechanics. Visualize launches from Earth to orbit.">
+    <title>Rocket Launch Trajectory Simulator | 3D Orbital Mechanics Visualization</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/styles-b.css">
+    <!-- Microsoft Clarity A/B -->
+    <script type="text/javascript">
+      (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+      })(window,document,"clarity","script","CLARITY_ID");
+    </script>
+    <script>clarity("set","ab_variant","b");</script>
+</head>
+<body data-variant="b">
+    <canvas id="canvas"></canvas>
+
+    <!-- HEADER BAR -->
+    <header id="hdr-bar">
+        <div id="hdr-left">
+            <span class="hdr-dot"></span>
+            <span id="hdr-mission-name">ROCKET</span>
+            <span class="hdr-sep">·</span>
+            <span id="hdr-phase">PRELAUNCH</span>
+        </div>
+        <div id="hdr-stats">
+            <div class="hdr-stat">
+                <div class="hdr-label">MISSION TIME</div>
+                <div class="hdr-val">T+&nbsp;<span id="time">00:00:00</span></div>
+            </div>
+            <div class="hdr-divider"></div>
+            <div class="hdr-stat">
+                <div class="hdr-label">ALTITUDE</div>
+                <div class="hdr-val hdr-cyan"><span id="altitude">0 km</span></div>
+            </div>
+            <div class="hdr-divider"></div>
+            <div class="hdr-stat">
+                <div class="hdr-label">VELOCITY</div>
+                <div class="hdr-val hdr-cyan"><span id="velocity">0 m/s</span></div>
+            </div>
+            <div class="hdr-divider"></div>
+            <div class="hdr-stat">
+                <div class="hdr-label">APOAPSIS</div>
+                <div class="hdr-val"><span id="apoapsis">0 km</span></div>
+            </div>
+        </div>
+        <div id="hdr-right">
+            <span id="hdr-status-badge" class="hdr-badge" hidden></span>
+            <a href="builder.html" class="hdr-nav-link" title="Vehicle Hangar">Hangar</a>
+            <a href="about.html" class="hdr-nav-link hdr-nav-icon" title="Documentation">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+            </a>
+            <a href="https://github.com/donutTheJedi" target="_blank" rel="noopener noreferrer" class="hdr-nav-link hdr-nav-icon" title="GitHub">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+            </a>
+        </div>
+    </header>
+
+    <button id="mobile-menu-toggle" class="mobile-hamburger" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+    </button>
+
+    <!-- T-minus hidden in B (time is in header) -->
+    <div id="tminus-display" style="display:none">
+        <div class="tminus-time" id="tminus-time">T- 00:00</div>
+        <div class="tminus-event" id="tminus-event-name">Next Event</div>
+    </div>
+
+    <!-- top-links hidden in B; nav is in header -->
+    <div id="top-links" style="display:none">
+        <a href="builder.html" id="hangar-link" class="top-link top-link--label">Hangar</a>
+        <a href="about.html" id="docs-link" class="top-link"></a>
+        <a href="https://github.com/donutTheJedi" id="github-link" class="top-link"></a>
+    </div>
+
+    <!-- LEFT TELEMETRY PANEL -->
+    <div id="telemetry">
+        <div class="telemetry-tabs">
+            <button id="telemetry-tab-flight" class="telemetry-tab active">Flight</button>
+            <button id="telemetry-tab-structural" class="telemetry-tab">Structure</button>
+        </div>
+
+        <div id="telemetry-flight-content">
+            <div class="b-section">
+                <div class="b-section-label">VELOCITY BREAKDOWN</div>
+                <div class="b-metric">
+                    <div class="b-metric-row">
+                        <span class="b-metric-name">Vertical</span>
+                        <span class="b-metric-val" id="vvel">0 m/s</span>
+                    </div>
+                    <div class="b-bar-track"><div class="b-bar-fill" id="vvel-bar" style="width:0%"></div></div>
+                </div>
+                <div class="b-metric">
+                    <div class="b-metric-row">
+                        <span class="b-metric-name">Horizontal</span>
+                        <span class="b-metric-val" id="hvel">0 m/s</span>
+                    </div>
+                    <div class="b-bar-track"><div class="b-bar-fill" id="hvel-bar" style="width:0%"></div></div>
+                </div>
+            </div>
+
+            <div class="b-section">
+                <div class="b-section-label">AERODYNAMICS</div>
+                <div class="b-row">
+                    <span class="b-row-key">Dyn pressure</span>
+                    <span class="b-row-val" id="dynpress">0 kPa</span>
+                </div>
+                <div class="b-row">
+                    <span class="b-row-key">Max Q</span>
+                    <span class="b-row-val b-maxq" id="maxq">0 kPa</span>
+                </div>
+                <div class="b-row">
+                    <span class="b-row-key">Mach</span>
+                    <span class="b-row-val" id="mach">0</span>
+                </div>
+            </div>
+
+            <div class="b-section">
+                <div class="b-section-label">VEHICLE</div>
+                <div class="b-row">
+                    <span class="b-row-key">Thrust</span>
+                    <span class="b-row-val" id="thrust">0 kN</span>
+                </div>
+                <div class="b-row">
+                    <span class="b-row-key">Acceleration</span>
+                    <span class="b-row-val" id="accel">0 G</span>
+                </div>
+                <div class="b-row">
+                    <span class="b-row-key">Propellant</span>
+                    <span class="b-row-val b-amber" id="propellant">0%</span>
+                </div>
+            </div>
+
+            <button class="b-show-metrics-btn" id="b-show-metrics-btn">
+                <span>··· Show all metrics</span>
+                <span class="b-show-metrics-badge" id="b-show-metrics-badge">OPEN</span>
+            </button>
+        </div>
+
+        <!-- Structural tab (identical to A) -->
+        <div id="telemetry-structural-dock" class="telemetry-structural-dock" hidden>
+            <div id="structural-panel" class="structural-panel structural-panel--docked">
+                <div class="structural-panel-header" id="structural-panel-header" title="Drag to move">
+                    <span class="structural-panel-grip" aria-hidden="true">&#x22EE;&#x22EE;</span>
+                    <span class="structural-panel-title">STRUCTURE</span>
+                    <button type="button" id="structural-panel-dock-btn" class="structural-panel-dock-btn" title="Pop out panel">&#x29C9;</button>
+                </div>
+                <div id="telemetry-structural-content">
+                    <div class="section telemetry-structural-diagram-section">
+                        <div class="telemetry-structural-diagram-title">STRESS MAP</div>
+                        <canvas id="telemetry-rocket-canvas" width="160" height="300"></canvas>
+                    </div>
+                    <div id="structural-sections-panel"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ALL METRICS POPUP -->
+    <div id="b-metrics-popup" class="b-metrics-popup" hidden>
+        <div class="b-popup-header">
+            <span class="b-popup-title">ALL METRICS</span>
+            <span class="b-popup-tag">OPTIONAL</span>
+            <button class="b-popup-close" id="b-metrics-close">&#215;</button>
+        </div>
+        <div class="b-popup-force-wrap">
+            <canvas id="b-force-canvas" width="200" height="160"></canvas>
+        </div>
+        <div class="b-popup-row"><span>Downrange</span><span><span id="downrange">0</span> km</span></div>
+        <div class="b-popup-row"><span>Stage</span><span id="stage">1</span></div>
+        <div class="b-popup-row"><span>Mass</span><span id="mass">0 kg</span></div>
+        <div class="b-popup-row"><span>Gimbal</span><span id="gimbal">0&#176;</span></div>
+        <div class="b-popup-row"><span>Drag coeff</span><span id="dragcoeff">0.00</span></div>
+        <div class="b-popup-row"><span>CoG</span><span id="cog">0 m</span></div>
+        <div class="b-popup-row"><span>CoP</span><span id="cop">0 m</span></div>
+        <div class="b-popup-row"><span>Fuel level</span><span id="fuel-level">0 m</span></div>
+        <div class="b-popup-row"><span>Periapsis</span><span id="periapsis">0 km</span></div>
+    </div>
+
+    <!-- FLIGHT PLAN -->
+    <div id="b-flight-plan">
+        <div class="b-panel-label">FLIGHT PLAN</div>
+        <div id="b-flight-plan-list"></div>
+    </div>
+
+    <!-- GUIDE BOX -->
+    <div id="b-guide">
+        <div class="b-guide-label">GUIDE</div>
+        <div id="b-guide-text">Select a flight mode from the menu to begin your mission.</div>
+    </div>
+
+    <!-- HIDDEN COMPAT ELEMENTS -->
+    <span id="pitch" style="display:none">90</span>
+    <div id="events" style="display:none">
+        <h3><span>MISSION EVENTS</span>
+            <button type="button" id="events-collapse-btn" class="events-collapse-btn">_</button>
+        </h3>
+        <div id="event-list"></div>
+    </div>
+    <div id="pitch-program" style="display:none">
+        <div><span class="label">Target:</span> <span id="target-pitch">90&#176;</span></div>
+        <div><span class="label">Current:</span> <span id="current-pitch">90&#176;</span></div>
+        <div class="pitch-bar"><div class="pitch-indicator" id="pitch-bar"></div></div>
+    </div>
+    <div id="guidance-info" style="display:none"></div>
+    <div id="controls" style="display:none">
+        <button id="menu-btn">MENU</button>
+        <button id="reset-btn">RESET</button>
+        <button id="zoom-auto-btn">AUTO ZOOM</button>
+        <button id="camera-btn">FOLLOW ROCKET</button>
+    </div>
+    <div id="quick-actions" style="display:none"></div>
+
+    <!-- BOTTOM BAR -->
+    <div id="b-bottom-bar">
+        <div id="b-phase-timeline">
+            <div class="b-phase" id="b-phase-prelaunch">
+                <div class="b-phase-dot"></div>
+                <div class="b-phase-name">Prelaunch</div>
+            </div>
+            <div class="b-phase-line" id="b-pline-liftoff"></div>
+            <div class="b-phase" id="b-phase-liftoff">
+                <div class="b-phase-dot"></div>
+                <div class="b-phase-name">Liftoff</div>
+            </div>
+            <div class="b-phase-line" id="b-pline-ascent"></div>
+            <div class="b-phase" id="b-phase-ascent">
+                <div class="b-phase-dot"></div>
+                <div class="b-phase-name">Ascent</div>
+            </div>
+            <div class="b-phase-line" id="b-pline-meco"></div>
+            <div class="b-phase" id="b-phase-meco">
+                <div class="b-phase-dot"></div>
+                <div class="b-phase-name">MECO</div>
+            </div>
+            <div class="b-phase-line" id="b-pline-orbit"></div>
+            <div class="b-phase" id="b-phase-orbit">
+                <div class="b-phase-dot"></div>
+                <div class="b-phase-name">Orbit</div>
+            </div>
+        </div>
+        <div id="b-bottom-center">
+            <button id="launch-btn" class="b-launch-btn">LAUNCH &#9650;</button>
+            <button id="pause-btn" style="display:none" title="Pause">&#9646;&#9646;</button>
+        </div>
+        <div id="b-bottom-controls">
+            <button id="zoom-out-btn" title="Zoom out">&#8722;</button>
+            <button id="zoom-in-btn" title="Zoom in">+</button>
+            <button id="speed-btn" title="Time warp">1&#215;</button>
+            <button id="b-camera-btn" title="Toggle camera view">ROCKET CAM</button>
+            <button id="b-menu-btn" title="Mission Control">MENU</button>
+        </div>
+    </div>
+
+    <!-- MENU PANEL (unchanged from A) -->
+    <div id="menu-panel" style="display: none;">
+        <div class="menu-header">
+            <h2>MISSION CONTROL</h2>
+            <button id="menu-close-btn" class="menu-close">&#215;</button>
+        </div>
+        <div class="menu-sg">
+            <div class="menu-sg-label">&#9658; FLIGHT MODE</div>
+            <div class="menu-mode-grid">
+                <button class="menu-mode-card" data-mode="manual">
+                    <div class="menu-mode-card-label">MANUAL</div>
+                    <div class="menu-mode-card-sub">Fly by hand</div>
+                    <div class="menu-mode-badges">
+                        <span class="mode-badge mode-badge--hard">HARD</span>
+                        <span class="mode-badge mode-badge--tag">W/S keys</span>
+                    </div>
+                </button>
+                <button type="button" class="menu-mode-card menu-mode-card--challenge" id="challenge-card">
+                    <div class="menu-mode-card-label" id="challenge-card-label">CHALLENGE</div>
+                    <div class="menu-mode-card-sub" id="challenge-card-sub">Extreme difficulty</div>
+                    <div class="menu-mode-badges">
+                        <span class="mode-badge mode-badge--hard" id="challenge-card-badge-main">HARD</span>
+                        <span class="mode-badge mode-badge--tag" id="challenge-card-badge-sub">Design &amp; fly</span>
+                    </div>
+                </button>
+                <button class="menu-mode-card" data-mode="cubic">
+                    <div class="menu-mode-card-label">CUBIC</div>
+                    <div class="menu-mode-card-sub">Precision orbit</div>
+                    <div class="menu-mode-badges">
+                        <span class="mode-badge mode-badge--medium">MEDIUM</span>
+                        <span class="mode-badge mode-badge--tag">Spline path</span>
+                    </div>
+                </button>
+                <button class="menu-mode-card" data-mode="orbital">
+                    <div class="menu-mode-card-label">ORBITAL</div>
+                    <div class="menu-mode-card-sub">Spawn in orbit</div>
+                    <div class="menu-mode-badges">
+                        <span class="mode-badge mode-badge--easy">EASY</span>
+                        <span class="mode-badge mode-badge--tag">Skip ascent</span>
+                    </div>
+                </button>
+            </div>
+            <div id="menu-challenge-active-note" class="menu-challenge-active-note" style="display:none">
+                Challenge active: Aerodynamic forces, gimbal control, and structural explosion on failure. Use Manual mode — Orbital is unavailable.
+            </div>
+            <div id="mode-info-box" class="menu-mode-infobox" style="display:none">
+                <div class="menu-mode-info" data-mode="manual" style="display:none">
+                    <p class="menu-mode-infotext">Use W/S keys to control pitch angle. Guidance system provides heading recommendations.</p>
+                </div>
+                <input type="number" id="target-altitude-input" value="500" min="150" max="2000" step="50" hidden aria-hidden="true">
+                <div class="menu-mode-info" data-mode="cubic" style="display:none">
+                    <p class="menu-mode-infotext">A Gauss-Newton solver computes the optimal cubic thrust-angle profile to reach the target orbit.</p>
+                    <div class="menu-input-group">
+                        <label for="cubic-altitude-input">Target Altitude (km)</label>
+                        <input type="number" id="cubic-altitude-input" value="500" min="150" max="2000" step="50">
+                    </div>
+                </div>
+                <div class="menu-mode-info" data-mode="orbital" style="display:none">
+                    <p class="menu-mode-infotext">Skip the launch phase — spawn directly in a circular orbit with limited fuel.</p>
+                    <div class="menu-preset-buttons">
+                        <button class="preset-btn" data-altitude="200">200 km</button>
+                        <button class="preset-btn" data-altitude="400">400 km</button>
+                        <button class="preset-btn active" data-altitude="500">500 km</button>
+                        <button class="preset-btn" data-altitude="600">600 km</button>
+                        <button class="preset-btn" data-altitude="800">800 km</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="menu-sg">
+            <div class="menu-sg-label">&#9658; ROCKET CONFIG</div>
+            <div class="menu-rocket-card">
+                <div class="menu-rocket-top">
+                    <div>
+                        <div class="menu-rocket-name">
+                            <span class="menu-rocket-icon">&#9650;</span>
+                            <span id="menu-rocket-title">FALCON-9 MK1</span>
+                        </div>
+                        <div class="menu-rocket-meta" id="menu-rocket-meta">2 STAGES · KEROLOX</div>
+                    </div>
+                    <div class="menu-build-btn-group">
+                        <button id="reset-rocket-btn" class="menu-reset-rocket-btn" style="display:none" title="Reset to default rocket">RESET</button>
+                        <a href="builder.html" id="build-rocket-btn" class="menu-build-inline-btn">BUILD &#8250;</a>
+                    </div>
+                </div>
+                <div class="menu-rocket-stats">
+                    <div class="menu-rocket-stat">
+                        <div class="menu-rocket-stat-val" id="menu-stat-drymass">&#8212;</div>
+                        <div class="menu-rocket-stat-label">DRY MASS</div>
+                    </div>
+                    <div class="menu-rocket-stat">
+                        <div class="menu-rocket-stat-val" id="menu-stat-twr">&#8212;</div>
+                        <div class="menu-rocket-stat-label">TWR</div>
+                    </div>
+                    <div class="menu-rocket-stat">
+                        <div class="menu-rocket-stat-val" id="menu-stat-isp">&#8212;</div>
+                        <div class="menu-rocket-stat-label">VAC ISP</div>
+                    </div>
+                </div>
+                <div class="menu-readiness">
+                    <div class="menu-readiness-header">
+                        <span>LAUNCH READINESS</span>
+                        <span id="menu-readiness-label">&#8212;</span>
+                    </div>
+                    <div class="menu-readiness-bg">
+                        <div class="menu-readiness-fill" id="menu-readiness-fill" style="width:0%"></div>
+                    </div>
+                </div>
+            </div>
+            <div id="menu-advisory" class="menu-advisory" style="display:none">
+                <span class="menu-advisory-icon">&#9888;</span>
+                <span id="menu-advisory-text"></span>
+            </div>
+        </div>
+        <div class="menu-sg" id="menu-settings-section">
+            <div class="menu-sg-label">&#9658; SETTINGS</div>
+            <div class="menu-settings-list">
+                <div class="menu-srow menu-srow--clickable" id="settings-control-mode-row">
+                    <span class="menu-srow-key">CONTROL MODE</span>
+                    <span class="menu-srow-val" id="settings-control-mode-val">TURN RATE &#8250;</span>
+                </div>
+                <div class="menu-srow" id="aero-forces-setting" style="display:none">
+                    <span class="menu-srow-key">AERODYNAMIC FORCES</span>
+                    <label class="menu-toggle">
+                        <input type="checkbox" id="aero-forces-toggle">
+                        <span class="menu-toggle-track"></span>
+                    </label>
+                </div>
+                <div class="menu-srow">
+                    <span class="menu-srow-key">STRUCTURAL FAILURE</span>
+                    <label class="menu-toggle">
+                        <input type="checkbox" id="struct-fail-toggle">
+                        <span class="menu-toggle-track"></span>
+                    </label>
+                </div>
+            </div>
+            <div style="display:none">
+                <button id="control-turnrate-btn" class="toggle-btn active">Turn Rate</button>
+                <button id="control-gimbal-btn" class="toggle-btn">Gimbal</button>
+                <button id="aero-forces-off-btn" class="toggle-btn active">Off</button>
+                <button id="aero-forces-on-btn" class="toggle-btn">On</button>
+                <button id="struct-fail-warn-btn" class="toggle-btn active">Warn</button>
+                <button id="struct-fail-terminate-btn" class="toggle-btn">Terminate</button>
+                <p id="control-mode-description"></p>
+                <p id="aero-forces-description"></p>
+            </div>
+        </div>
+        <button id="menu-launch-btn" class="menu-launch-btn" disabled>SELECT A MODE</button>
+        <button id="start-manual-btn" style="display:none">START MANUAL</button>
+        <button id="start-guided-btn" style="display:none">START GUIDED</button>
+        <button id="start-cubic-btn" style="display:none">START CUBIC</button>
+        <button id="start-orbital-btn" style="display:none">SPAWN IN ORBIT</button>
+    </div>
+
+    <div id="menu-overlay" style="display: none;"></div>
+
+    <div id="failure-dialog" class="failure-dialog" role="dialog" aria-labelledby="failure-dialog-title" aria-modal="true" hidden>
+        <div class="failure-dialog-card">
+            <h2 id="failure-dialog-title" class="failure-dialog-title">MISSION FAILURE</h2>
+            <p id="failure-dialog-message" class="failure-dialog-message">Vehicle destroyed.</p>
+            <div class="failure-dialog-actions">
+                <button type="button" id="failure-restart-btn" class="failure-dialog-btn failure-dialog-btn--primary">RESTART</button>
+                <button type="button" id="failure-alt-btn" class="failure-dialog-btn">GO TO MENU</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="mobile-ui-panel" class="mobile-ui-panel">
+        <div id="mobile-controls-container"></div>
+        <div id="mobile-github-container"></div>
+        <div id="mobile-pitch-container"></div>
+    </div>
+
+    <div id="manual-pitch-controls" style="display: none;">
+        <h3 id="manual-control-title">MANUAL PITCH CONTROL</h3>
+        <div class="pitch-display">
+            <div id="manual-pitch-display">90&#176;</div>
+            <div id="manual-gimbal-display" style="display: none;">Gimbal: 0.0&#176;</div>
+            <div id="b-turnrate-row" style="display: none;" class="b-turnrate-row">
+                <span class="b-turnrate-label">TURN RATE</span>
+                <span id="turn-rate" class="b-turnrate-val">0.0 &#176;/s</span>
+            </div>
+            <div id="guidance-recommendation" class="guidance-recommendation" style="display: none;">
+                Guidance: <span id="guidance-rec-value">90&#176;</span>
+            </div>
+        </div>
+        <div class="pitch-buttons">
+            <button id="pitch-up-btn">&#8593; PITCH UP<br>(W Key)</button>
+            <button id="pitch-down-btn">&#8595; PITCH DOWN<br>(S Key)</button>
+        </div>
+    </div>
+
+    <div id="burn-controls" style="display: none;">
+        <h3>ORBITAL BURNS</h3>
+        <div id="burn-status">
+            <div>Hold button to burn</div>
+        </div>
+        <div id="burn-btn-grid">
+            <button id="refuel-btn">REFUEL (5000 kg)</button>
+            <button id="burn-prograde-btn">PROGRADE</button>
+            <button id="burn-retrograde-btn">RETROGRADE</button>
+            <button id="burn-normal-btn">NORMAL</button>
+            <button id="burn-anti-normal-btn">ANTI-NORMAL</button>
+            <button id="burn-radial-btn">RADIAL</button>
+            <button id="burn-anti-radial-btn">ANTI-RADIAL</button>
+        </div>
+    </div>
+
+    <div id="structural-panel-float-root"></div>
+
+    <script type="module" src="js/main.js"></script>
+    <script>
+        if (location.hostname.endsWith('.vercel.app') || location.hostname === 'vercel.app') {
+            const s = document.createElement('script');
+            s.defer = true;
+            s.src = '/_vercel/insights/script.js';
+            document.body.appendChild(s);
+        }
+        document.getElementById('b-show-metrics-btn').addEventListener('click', function() {
+            const popup = document.getElementById('b-metrics-popup');
+            const badge = document.getElementById('b-show-metrics-badge');
+            const willOpen = popup.hidden;
+            popup.hidden = !willOpen;
+            badge.textContent = willOpen ? 'SHOWN' : 'OPEN';
+        });
+        document.getElementById('b-metrics-close').addEventListener('click', function() {
+            document.getElementById('b-metrics-popup').hidden = true;
+            document.getElementById('b-show-metrics-badge').textContent = 'OPEN';
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,834 @@
+/* =========================================================
+   VARIANT B — Navy aerospace theme
+   Loaded alongside styles.css; overrides and new elements only.
+   ========================================================= */
+
+/* ── Body / background ───────────────────────────────────── */
+body[data-variant="b"] {
+    background: #0a1628;
+}
+
+body[data-variant="b"] #canvas {
+    background: #0a1628;
+}
+
+/* ── Hide A-only elements ────────────────────────────────── */
+[data-variant="b"] #tminus-display,
+[data-variant="b"] #top-links,
+[data-variant="b"] #controls,
+[data-variant="b"] #quick-actions,
+[data-variant="b"] #pitch-program,
+[data-variant="b"] #guidance-info,
+[data-variant="b"] #events {
+    display: none !important;
+}
+
+/* ── HEADER BAR ──────────────────────────────────────────── */
+#hdr-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background: rgba(8, 16, 36, 0.92);
+    border-bottom: 1px solid rgba(56, 189, 248, 0.18);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    z-index: 900;
+    font-family: 'Courier New', monospace;
+}
+
+#hdr-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 200px;
+    white-space: nowrap;
+}
+
+.hdr-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #f87171;
+    flex-shrink: 0;
+}
+
+#hdr-mission-name {
+    font-size: 13px;
+    font-weight: bold;
+    color: #e2e8f0;
+    letter-spacing: 0.08em;
+}
+
+.hdr-sep {
+    color: rgba(148, 163, 184, 0.5);
+    font-size: 13px;
+}
+
+#hdr-phase {
+    font-size: 11px;
+    color: #94a3b8;
+    letter-spacing: 0.06em;
+}
+
+#hdr-stats {
+    display: flex;
+    align-items: center;
+    gap: 0;
+}
+
+.hdr-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 20px;
+}
+
+.hdr-label {
+    font-size: 9px;
+    color: #64748b;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+}
+
+.hdr-val {
+    font-size: 18px;
+    color: #e2e8f0;
+    font-weight: normal;
+    letter-spacing: 0.02em;
+    line-height: 1;
+}
+
+.hdr-val.hdr-cyan {
+    color: #38bdf8;
+}
+
+.hdr-divider {
+    width: 1px;
+    height: 32px;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+#hdr-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 200px;
+    justify-content: flex-end;
+}
+
+.hdr-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    font-weight: bold;
+    background: rgba(251, 191, 36, 0.15);
+    border: 1px solid rgba(251, 191, 36, 0.4);
+    color: #fbbf24;
+}
+
+.hdr-nav-link {
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    color: #64748b;
+    text-decoration: none;
+    letter-spacing: 0.06em;
+    display: flex;
+    align-items: center;
+    transition: color 0.15s;
+}
+
+.hdr-nav-link:hover { color: #38bdf8; }
+
+.hdr-nav-icon {
+    width: 28px;
+    height: 28px;
+    justify-content: center;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 5px;
+    background: rgba(255,255,255,0.04);
+}
+
+.hdr-nav-icon:hover {
+    border-color: rgba(56,189,248,0.4);
+    background: rgba(56,189,248,0.08);
+}
+
+/* ── TELEMETRY PANEL ─────────────────────────────────────── */
+[data-variant="b"] #telemetry {
+    top: 68px;
+    background: rgba(8, 18, 40, 0.88);
+    border: 1px solid rgba(56, 189, 248, 0.15);
+    border-radius: 8px;
+}
+
+[data-variant="b"] #telemetry h3 {
+    display: none;
+}
+
+[data-variant="b"] .telemetry-tabs {
+    display: flex;
+    border-bottom: 1px solid rgba(56, 189, 248, 0.15);
+    margin-bottom: 0;
+}
+
+[data-variant="b"] .telemetry-tab {
+    flex: 1;
+    padding: 10px 0;
+    background: none;
+    border: none;
+    color: #64748b;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: color 0.15s;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+}
+
+[data-variant="b"] .telemetry-tab:hover { color: #94a3b8; }
+
+[data-variant="b"] .telemetry-tab.active {
+    color: #38bdf8;
+    border-bottom-color: #38bdf8;
+}
+
+/* ── B-specific section styles ───────────────────────────── */
+.b-section {
+    padding: 10px 12px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.b-section:last-child { border-bottom: none; }
+
+.b-section-label {
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    color: #475569;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    font-family: 'Courier New', monospace;
+}
+
+.b-metric {
+    margin-bottom: 8px;
+}
+
+.b-metric:last-child { margin-bottom: 0; }
+
+.b-metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 4px;
+}
+
+.b-metric-name {
+    font-size: 11px;
+    color: #94a3b8;
+    font-family: 'Courier New', monospace;
+}
+
+.b-metric-val {
+    font-size: 13px;
+    color: #e2e8f0;
+    font-family: 'Courier New', monospace;
+}
+
+.b-bar-track {
+    height: 3px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.b-bar-fill {
+    height: 100%;
+    background: #38bdf8;
+    border-radius: 2px;
+    transition: width 0.2s ease;
+    min-width: 0;
+}
+
+.b-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 4px 0;
+    font-family: 'Courier New', monospace;
+}
+
+.b-row-key {
+    font-size: 11px;
+    color: #64748b;
+}
+
+.b-row-val {
+    font-size: 12px;
+    color: #cbd5e1;
+}
+
+.b-maxq {
+    color: #38bdf8;
+}
+
+.b-amber {
+    color: #f59e0b;
+}
+
+.b-show-metrics-btn {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: calc(100% - 24px);
+    margin: 10px 12px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    color: #94a3b8;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.b-show-metrics-btn:hover {
+    border-color: rgba(56, 189, 248, 0.4);
+    color: #e2e8f0;
+    background: rgba(56, 189, 248, 0.06);
+}
+
+.b-show-metrics-badge {
+    font-size: 9px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    letter-spacing: 0.06em;
+}
+
+/* ── ALL METRICS POPUP ───────────────────────────────────── */
+.b-metrics-popup {
+    position: fixed;
+    top: 68px;
+    left: 310px;
+    width: 240px;
+    background: rgba(8, 18, 40, 0.96);
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    border-radius: 8px;
+    z-index: 800;
+    backdrop-filter: blur(8px);
+    overflow: hidden;
+}
+
+.b-popup-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.b-popup-title {
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: #e2e8f0;
+    flex: 1;
+}
+
+.b-popup-tag {
+    font-size: 9px;
+    color: #64748b;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.06em;
+}
+
+.b-popup-close {
+    background: none;
+    border: none;
+    color: #64748b;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+}
+
+.b-popup-close:hover { color: #e2e8f0; }
+
+.b-popup-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 12px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.b-popup-row:last-child { border-bottom: none; }
+
+.b-popup-row span:first-child { color: #64748b; }
+.b-popup-row span:last-child { color: #cbd5e1; }
+
+/* ── FORCE DIAGRAM IN ALL METRICS POPUP ──────────────────── */
+.b-popup-force-wrap {
+    padding: 10px 12px 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+#b-force-canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 4px;
+    border: 1px solid rgba(56, 189, 248, 0.12);
+}
+
+/* ── TURN RATE ROW IN MANUAL PITCH CONTROLS ──────────────── */
+.b-turnrate-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(56, 189, 248, 0.12);
+}
+
+.b-turnrate-label {
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: #475569;
+    font-family: 'Courier New', monospace;
+}
+
+.b-turnrate-val {
+    font-size: 13px;
+    color: #38bdf8;
+    font-family: 'Courier New', monospace;
+}
+
+/* ── FLIGHT PLAN PANEL ───────────────────────────────────── */
+#b-flight-plan {
+    position: fixed;
+    right: 20px;
+    top: 80px;
+    width: 200px;
+    background: rgba(8, 18, 40, 0.88);
+    border: 1px solid rgba(56, 189, 248, 0.15);
+    border-radius: 8px;
+    padding: 12px;
+    z-index: 700;
+    max-height: calc(100vh - 160px);
+    overflow-y: auto;
+}
+
+.b-panel-label {
+    font-family: 'Courier New', monospace;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    color: #475569;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+}
+
+.b-fp-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-family: 'Courier New', monospace;
+}
+
+.b-fp-item:last-child { border-bottom: none; }
+
+.b-fp-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 2px solid #334155;
+    flex-shrink: 0;
+    margin-top: 3px;
+}
+
+.b-fp-item.fp-past .b-fp-dot {
+    background: #22c55e;
+    border-color: #22c55e;
+}
+
+.b-fp-item.fp-current .b-fp-dot {
+    background: #38bdf8;
+    border-color: #38bdf8;
+    box-shadow: 0 0 6px rgba(56,189,248,0.5);
+}
+
+.b-fp-item.fp-future .b-fp-dot {
+    background: transparent;
+    border-color: #334155;
+}
+
+.b-fp-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.b-fp-name {
+    font-size: 11px;
+    color: #94a3b8;
+    display: block;
+    margin-bottom: 2px;
+}
+
+.b-fp-item.fp-current .b-fp-name {
+    color: #e2e8f0;
+    font-weight: bold;
+}
+
+.b-fp-item.fp-past .b-fp-name {
+    color: #64748b;
+}
+
+.b-fp-time {
+    font-size: 10px;
+    color: #475569;
+}
+
+.b-fp-item.fp-current .b-fp-time {
+    color: #38bdf8;
+}
+
+.b-fp-now {
+    font-size: 9px;
+    color: #38bdf8;
+    margin-left: 4px;
+    letter-spacing: 0.04em;
+}
+
+/* ── GUIDE BOX ───────────────────────────────────────────── */
+#b-guide {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(8, 18, 40, 0.88);
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    border-radius: 8px;
+    padding: 10px 16px;
+    max-width: 400px;
+    z-index: 700;
+    pointer-events: none;
+}
+
+.b-guide-label {
+    font-family: 'Courier New', monospace;
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    color: #38bdf8;
+    margin-bottom: 5px;
+}
+
+#b-guide-text {
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    color: #cbd5e1;
+    line-height: 1.5;
+}
+
+/* ── BOTTOM BAR ──────────────────────────────────────────── */
+#b-bottom-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 64px;
+    background: rgba(8, 16, 36, 0.92);
+    border-top: 1px solid rgba(56, 189, 248, 0.18);
+    backdrop-filter: blur(8px);
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    padding: 0 24px;
+    z-index: 900;
+}
+
+#b-bottom-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+/* ── PHASE TIMELINE ──────────────────────────────────────── */
+#b-phase-timeline {
+    display: flex;
+    align-items: center;
+    gap: 0;
+}
+
+.b-phase {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.b-phase-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid #334155;
+    background: transparent;
+    transition: all 0.3s;
+}
+
+.b-phase-name {
+    font-family: 'Courier New', monospace;
+    font-size: 9px;
+    color: #475569;
+    white-space: nowrap;
+    letter-spacing: 0.04em;
+}
+
+.b-phase-line {
+    width: 40px;
+    height: 2px;
+    background: #1e293b;
+    margin-bottom: 14px;
+    transition: background 0.3s;
+}
+
+/* Phase states */
+.b-phase.phase-past .b-phase-dot {
+    background: #22c55e;
+    border-color: #22c55e;
+}
+.b-phase.phase-past .b-phase-name { color: #4ade80; }
+
+.b-phase.phase-current .b-phase-dot {
+    background: #38bdf8;
+    border-color: #38bdf8;
+    box-shadow: 0 0 8px rgba(56,189,248,0.6);
+}
+.b-phase.phase-current .b-phase-name { color: #e2e8f0; }
+
+.b-phase-line.line-past { background: #22c55e; }
+.b-phase-line.line-current { background: rgba(56,189,248,0.4); }
+
+/* ── BOTTOM CONTROLS ─────────────────────────────────────── */
+#b-bottom-controls {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+#b-bottom-controls button {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    color: #94a3b8;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+#b-bottom-controls button:hover {
+    border-color: rgba(56, 189, 248, 0.4);
+    color: #e2e8f0;
+    background: rgba(56, 189, 248, 0.08);
+}
+
+#b-camera-btn.orbital-active {
+    background: rgba(56, 189, 248, 0.12) !important;
+    border-color: rgba(56, 189, 248, 0.4) !important;
+    color: #38bdf8 !important;
+}
+
+@keyframes b-launch-pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.55); border-color: rgba(56, 189, 248, 0.5) !important; }
+    50%  { box-shadow: 0 0 0 6px rgba(56, 189, 248, 0); border-color: rgba(56, 189, 248, 0.9) !important; background: rgba(56, 189, 248, 0.22) !important; }
+    100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); border-color: rgba(56, 189, 248, 0.5) !important; }
+}
+
+.b-launch-btn {
+    background: rgba(56, 189, 248, 0.12) !important;
+    border-color: rgba(56, 189, 248, 0.5) !important;
+    color: #38bdf8 !important;
+    font-weight: bold !important;
+    padding: 6px 20px !important;
+}
+
+.b-launch-btn:not(:disabled) {
+    animation: b-launch-pulse 1.6s ease-in-out infinite;
+}
+
+.b-launch-btn:hover {
+    background: rgba(56, 189, 248, 0.22) !important;
+}
+
+/* ── Override A's pitch-program / quick-actions position rules ── */
+[data-variant="b"] #pitch-program { display: none !important; }
+
+/* ── Burn controls B theme ───────────────────────────────── */
+[data-variant="b"] #burn-controls {
+    left: 10px;
+    bottom: 80px;
+    background: rgba(8, 18, 40, 0.92);
+    border: 1px solid rgba(56, 189, 248, 0.18);
+    border-radius: 10px;
+    padding: 0;
+    overflow: hidden;
+    min-width: 210px;
+    color: #94a3b8;
+}
+
+[data-variant="b"] #burn-controls h3 {
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    color: #475569;
+    font-weight: normal;
+    margin: 0;
+    padding: 10px 12px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+[data-variant="b"] #burn-status {
+    color: #64748b;
+    font-size: 10px;
+    padding: 6px 12px;
+    margin: 0;
+    min-height: auto;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    font-family: 'Courier New', monospace;
+}
+
+[data-variant="b"] #burn-btn-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+    padding: 10px;
+    flex-direction: unset;
+}
+
+[data-variant="b"] #refuel-btn {
+    grid-column: 1 / -1;
+    background: rgba(34, 197, 94, 0.08);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: #22c55e;
+    font-size: 9px;
+    font-family: 'Courier New', monospace;
+    padding: 6px 10px;
+    border-radius: 5px;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: background 0.15s;
+    margin-bottom: 0;
+    width: 100%;
+}
+
+[data-variant="b"] #refuel-btn:hover {
+    background: rgba(34, 197, 94, 0.18);
+}
+
+[data-variant="b"] #burn-prograde-btn,
+[data-variant="b"] #burn-retrograde-btn,
+[data-variant="b"] #burn-normal-btn,
+[data-variant="b"] #burn-anti-normal-btn,
+[data-variant="b"] #burn-radial-btn,
+[data-variant="b"] #burn-anti-radial-btn {
+    background: rgba(56, 189, 248, 0.06);
+    border: 1px solid rgba(56, 189, 248, 0.18);
+    color: #64748b;
+    font-size: 9px;
+    font-family: 'Courier New', monospace;
+    padding: 8px 6px;
+    border-radius: 5px;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+    text-align: center;
+    width: 100%;
+}
+
+[data-variant="b"] #burn-prograde-btn:hover,
+[data-variant="b"] #burn-retrograde-btn:hover,
+[data-variant="b"] #burn-normal-btn:hover,
+[data-variant="b"] #burn-anti-normal-btn:hover,
+[data-variant="b"] #burn-radial-btn:hover,
+[data-variant="b"] #burn-anti-radial-btn:hover {
+    background: rgba(56, 189, 248, 0.13);
+    border-color: rgba(56, 189, 248, 0.4);
+    color: #38bdf8;
+}
+
+[data-variant="b"] #burn-controls button.active {
+    background: rgba(56, 189, 248, 0.22);
+    border-color: #38bdf8;
+    color: #e2e8f0;
+    box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+}
+
+[data-variant="b"] .burn-status-active { color: #38bdf8; font-weight: bold; }
+[data-variant="b"] .burn-status-duration { color: #22c55e; }
+
+/* ── Manual pitch controls — bottom-right, above bottom bar ── */
+[data-variant="b"] #manual-pitch-controls {
+    bottom: 74px;
+    right: 20px;
+    width: 190px;
+    background: rgba(8, 18, 40, 0.92);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    border-radius: 8px;
+    color: #38bdf8;
+    font-family: 'Courier New', monospace;
+}
+
+[data-variant="b"] #manual-pitch-controls h3 {
+    color: #38bdf8;
+    border-bottom-color: rgba(56, 189, 248, 0.25);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+}
+
+[data-variant="b"] #manual-pitch-display {
+    color: #e2e8f0;
+}
+
+[data-variant="b"] .guidance-recommendation {
+    color: #64748b;
+}
+
+[data-variant="b"] .pitch-buttons button {
+    background: rgba(56, 189, 248, 0.08);
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    border-radius: 6px;
+    color: #94a3b8;
+    font-family: 'Courier New', monospace;
+}
+
+[data-variant="b"] .pitch-buttons button:hover {
+    background: rgba(56, 189, 248, 0.18);
+    color: #e2e8f0;
+    border-color: rgba(56, 189, 248, 0.5);
+}
+
+/* ── Mobile hamburger — move below header ────────────────── */
+[data-variant="b"] .mobile-hamburger {
+    top: 70px;
+}
