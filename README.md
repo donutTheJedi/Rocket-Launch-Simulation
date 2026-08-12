@@ -33,6 +33,8 @@ A realistic 2D physics simulation of orbital mechanics and rocket launches from 
 
 ## ✨ Features
 
+
+
 ### Physics & Simulation
 - **Realistic Orbital Mechanics**: Full 2-body problem with accurate vis-viva equations
 - **US Standard Atmosphere 1976**: Piecewise atmospheric model with geopotential altitude corrections
@@ -517,6 +519,8 @@ This project is open source. Feel free to use, modify, and distribute.
 - **Falcon 9 Specifications**: Based on publicly available SpaceX data
 - **Orbital Mechanics**: Based on classical two-body problem solutions
 
+## Notes
+The code here is not the same code thats on the website, the rocket launch sim and build are faithful but I do not push all my website code here, I just added a build your own FPA system thats not currently mirrored here
 ---
 
 **Enjoy your journey to orbit!** 🚀
